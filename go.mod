@@ -1,4 +1,4 @@
-module github.com/rybesh/wxyc-cli
+module github.com/WXYC/wxyc-cli
 
 go 1.25.1
 

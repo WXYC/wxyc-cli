@@ -8,7 +8,7 @@ dj.wxyc.org credentials.
 
 ```sh
 go build -o wxyc ./cmd/wxyc
-# or: go install github.com/rybesh/wxyc-cli/cmd/wxyc@latest
+# or: go install github.com/WXYC/wxyc-cli/cmd/wxyc@latest
 ```
 
 ## Quick start

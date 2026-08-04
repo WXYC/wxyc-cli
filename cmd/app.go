@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/rybesh/wxyc-cli/internal/api"
-	"github.com/rybesh/wxyc-cli/internal/auth"
-	"github.com/rybesh/wxyc-cli/internal/config"
-	"github.com/rybesh/wxyc-cli/internal/output"
-	"github.com/rybesh/wxyc-cli/internal/safety"
+	"github.com/WXYC/wxyc-cli/internal/api"
+	"github.com/WXYC/wxyc-cli/internal/auth"
+	"github.com/WXYC/wxyc-cli/internal/config"
+	"github.com/WXYC/wxyc-cli/internal/output"
+	"github.com/WXYC/wxyc-cli/internal/safety"
 	"io"
 )
 

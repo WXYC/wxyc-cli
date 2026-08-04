@@ -3,7 +3,7 @@ package cmd
 import (
 	"time"
 
-	"github.com/rybesh/wxyc-cli/internal/auth"
+	"github.com/WXYC/wxyc-cli/internal/auth"
 	"github.com/spf13/cobra"
 )
 

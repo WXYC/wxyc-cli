@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rybesh/wxyc-cli/internal/auth"
+	"github.com/WXYC/wxyc-cli/internal/auth"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rybesh/wxyc-cli/internal/api"
-	"github.com/rybesh/wxyc-cli/internal/auth"
+	"github.com/WXYC/wxyc-cli/internal/api"
+	"github.com/WXYC/wxyc-cli/internal/auth"
 	"github.com/spf13/cobra"
 )
 

@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `wxyc` is a read-only-by-default CLI for the WXYC backend API
 (https://api.wxyc.org), designed to be driven by both humans and agents. It
 authenticates with dj.wxyc.org credentials. The module is
-`github.com/rybesh/wxyc-cli`; the built binary is `wxyc`.
+`github.com/WXYC/wxyc-cli`; the built binary is `wxyc`.
 
 The backend service this CLI talks to is a separate repo:
 <https://github.com/WXYC/Backend-Service>. Its source is the best source of
@@ -19,7 +19,7 @@ the API's behavior is unclear or undocumented here.
 
 ```sh
 go build -o wxyc ./cmd/wxyc   # build
-go install github.com/rybesh/wxyc-cli/cmd/wxyc@latest  # or install directly
+go install github.com/WXYC/wxyc-cli/cmd/wxyc@latest  # or install directly
 go test ./...                 # run all tests (red-green TDD throughout)
 go test ./internal/api/...    # test a single package
 go test ./... -run TestBin_Add_PostsAlbumID  # run a single test

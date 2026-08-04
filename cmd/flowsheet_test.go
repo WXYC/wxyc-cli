@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rybesh/wxyc-cli/internal/safety"
+	"github.com/WXYC/wxyc-cli/internal/safety"
 )
 
 // fakeJWT builds an unsigned token whose payload carries the given sub claim.

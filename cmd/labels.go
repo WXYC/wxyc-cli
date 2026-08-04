@@ -3,7 +3,7 @@ package cmd
 import (
 	"strconv"
 
-	"github.com/rybesh/wxyc-cli/internal/api"
+	"github.com/WXYC/wxyc-cli/internal/api"
 	"github.com/spf13/cobra"
 )
 

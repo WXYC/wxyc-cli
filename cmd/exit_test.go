@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rybesh/wxyc-cli/internal/auth"
+	"github.com/WXYC/wxyc-cli/internal/auth"
 )
 
 // A dead or empty session surfaced from the token provider must map to ExitAuth

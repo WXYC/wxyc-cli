@@ -5,7 +5,7 @@ package main
 import (
 	"os"
 
-	"github.com/rybesh/wxyc-cli/cmd"
+	"github.com/WXYC/wxyc-cli/cmd"
 )
 
 func main() {

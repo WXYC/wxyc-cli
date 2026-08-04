@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/rybesh/wxyc-cli/internal/auth"
+	"github.com/WXYC/wxyc-cli/internal/auth"
 )
 
 // captureServer records the method, path, and decoded body of the single

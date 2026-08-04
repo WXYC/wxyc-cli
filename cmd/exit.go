@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/rybesh/wxyc-cli/internal/api"
-	"github.com/rybesh/wxyc-cli/internal/auth"
-	"github.com/rybesh/wxyc-cli/internal/safety"
+	"github.com/WXYC/wxyc-cli/internal/api"
+	"github.com/WXYC/wxyc-cli/internal/auth"
+	"github.com/WXYC/wxyc-cli/internal/safety"
 )
 
 // Exit codes form the CLI's machine-readable contract. An agent can branch on

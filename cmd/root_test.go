@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/rybesh/wxyc-cli/internal/safety"
+	"github.com/WXYC/wxyc-cli/internal/safety"
 )
 
 // runCLI executes the command tree with args and returns stdout and the error.
