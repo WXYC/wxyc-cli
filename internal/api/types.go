@@ -229,3 +229,12 @@ type ScheduleEntry struct {
 	AssignedDJID  *string `json:"assigned_dj_id"`
 	AssignedDJID2 *string `json:"assigned_dj_id2"`
 }
+
+// SpecialtyShow is one program in the public specialty-show catalog. Only the
+// fields the CLI resolves slugs with are modeled; the rest pass through --json.
+type SpecialtyShow struct {
+	ID     int    `json:"id"`
+	Slug   string `json:"slug"`
+	Name   string `json:"name"`
+	Active bool   `json:"active"`
+}

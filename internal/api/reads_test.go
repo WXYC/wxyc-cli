@@ -115,3 +115,20 @@ func TestGetRaw_MapsErrors(t *testing.T) {
 		t.Fatalf("getRaw err = %v, want StatusError 403", err)
 	}
 }
+
+func TestSpecialtyShows(t *testing.T) {
+	body := `[{"id":3,"slug":"new-science-experience","name":"New Science Experience","active":true,"tagline":"x"}]`
+	srv := serve(t, "/specialty-shows", body, nil)
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	s, raw, err := c.SpecialtyShows(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s) != 1 || s[0].ID != 3 || s[0].Slug != "new-science-experience" || !s[0].Active {
+		t.Errorf("decoded %+v", s)
+	}
+	if !strings.Contains(string(raw), "tagline") {
+		t.Errorf("raw dropped unmodeled field: %s", raw)
+	}
+}
