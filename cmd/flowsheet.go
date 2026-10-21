@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/WXYC/wxyc-cli/internal/api"
 	"github.com/spf13/cobra"
@@ -26,7 +27,7 @@ func newFlowsheetCmd(app *App) *cobra.Command {
 
 func newFlowsheetStartCmd(app *App) *cobra.Command {
 	var name, as string
-	var specialty int
+	var specialty string
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start your show (or join the active show as co-host)",
@@ -40,8 +41,12 @@ func newFlowsheetStartCmd(app *App) *cobra.Command {
 				return err
 			}
 			req := api.StartShowRequest{DJID: djID, ShowName: name, DJNameOverride: as}
-			if specialty > 0 {
-				req.SpecialtyID = &specialty
+			if cmd.Flags().Changed("specialty") {
+				id, err := resolveSpecialty(cmd, app, specialty)
+				if err != nil {
+					return err
+				}
+				req.SpecialtyID = &id
 			}
 			s, raw, err := app.client.FlowsheetStart(cmd.Context(), req)
 			if err != nil {
@@ -52,8 +57,32 @@ func newFlowsheetStartCmd(app *App) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&name, "name", "", "show name")
 	cmd.Flags().StringVar(&as, "as", "", "per-show DJ display name override")
-	cmd.Flags().IntVar(&specialty, "specialty", 0, "specialty show id")
+	cmd.Flags().StringVar(&specialty, "specialty", "", "specialty show slug, e.g. new-science-experience (a numeric id is also accepted)")
 	return cmd
+}
+
+// resolveSpecialty turns a --specialty value into a catalog id. A numeric value
+// is used as the id; anything else is matched against the active programs'
+// slugs before the join is sent, so a typo fails fast and names the valid slugs.
+func resolveSpecialty(cmd *cobra.Command, app *App, v string) (int, error) {
+	if id, err := strconv.Atoi(v); err == nil {
+		return id, nil
+	}
+	shows, _, err := app.client.SpecialtyShows(cmd.Context())
+	if err != nil {
+		return 0, err
+	}
+	var slugs []string
+	for _, s := range shows {
+		if !s.Active {
+			continue
+		}
+		if s.Slug == v {
+			return s.ID, nil
+		}
+		slugs = append(slugs, s.Slug)
+	}
+	return 0, fmt.Errorf("unknown specialty %q; valid slugs: %s", v, strings.Join(slugs, ", "))
 }
 
 func newFlowsheetAddCmd(app *App) *cobra.Command {

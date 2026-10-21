@@ -259,3 +259,66 @@ func TestFlowsheetEnd_PostsEndWithTokenDJID(t *testing.T) {
 		t.Errorf("confirmation missing status:\n%s", out)
 	}
 }
+
+// specialtyServer serves the catalog on GET and records the join like
+// captureFlowsheetServer.
+func specialtyServer(t *testing.T) (*httptest.Server, *struct {
+	Joined bool
+	Body   map[string]any
+}) {
+	t.Helper()
+	got := &struct {
+		Joined bool
+		Body   map[string]any
+	}{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/specialty-shows":
+			w.Write([]byte(`[{"id":3,"slug":"new-science-experience","active":true},{"id":5,"slug":"retired","active":false},{"id":8,"slug":"orange-county-special","active":true}]`))
+		case r.URL.Path == "/flowsheet/join":
+			got.Joined = true
+			b, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(b, &got.Body)
+			w.Write([]byte(`{"id":77,"show_name":"S","primary_dj_id":"dj-42","end_time":null}`))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, got
+}
+
+func TestFlowsheetStart_Specialty(t *testing.T) {
+	for _, tc := range []struct {
+		flag    string
+		wantID  float64
+		wantErr string
+	}{
+		{"new-science-experience", 3, ""},
+		{"7", 7, ""},
+		{"nope", 0, "new-science-experience, orange-county-special"},
+		{"retired", 0, "unknown specialty"},
+	} {
+		t.Run(tc.flag, func(t *testing.T) {
+			srv, got := specialtyServer(t)
+			t.Setenv("WXYC_API_URL", srv.URL)
+			t.Setenv("WXYC_JWT", fakeJWT("dj-42"))
+			_, err := runCLI(t, "flowsheet", "start", "--specialty", tc.flag, "--write")
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("err = %v, want containing %q", err, tc.wantErr)
+				}
+				if got.Joined {
+					t.Error("join sent despite unknown slug")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Body["specialty_id"] != tc.wantID {
+				t.Errorf("specialty_id = %v, want %v", got.Body["specialty_id"], tc.wantID)
+			}
+		})
+	}
+}

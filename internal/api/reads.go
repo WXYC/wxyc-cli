@@ -62,3 +62,11 @@ func (c *Client) Playlists(ctx context.Context, djID string) ([]Playlist, []byte
 func (c *Client) Rotation(ctx context.Context) ([]byte, error) {
 	return c.getRaw(ctx, "/library/rotation", nil)
 }
+
+// SpecialtyShows lists the specialty-show catalog (public, no auth), in
+// catalog order.
+func (c *Client) SpecialtyShows(ctx context.Context) ([]SpecialtyShow, []byte, error) {
+	var s []SpecialtyShow
+	raw, err := c.getInto(ctx, "/specialty-shows", nil, &s)
+	return s, raw, err
+}
