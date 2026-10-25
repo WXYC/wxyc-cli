@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -16,7 +18,8 @@ func newDJsCmd(app *App) *cobra.Command {
 }
 
 func newDJsPlaylistsCmd(app *App) *cobra.Command {
-	return &cobra.Command{
+	var full bool
+	cmd := &cobra.Command{
 		Use:   "playlists [dj_id]",
 		Short: "List a DJ's past shows (defaults to your own)",
 		Args:  cobra.MaximumNArgs(1),
@@ -29,9 +32,44 @@ func newDJsPlaylistsCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if full {
+				return emitFullPlaylists(cmd, app, playlists)
+			}
 			return app.render.EmitRaw(raw, []string{"DATE", "SHOW", "DJS", "PREVIEW"}, playlistRows(playlists))
 		},
 	}
+	cmd.Flags().BoolVar(&full, "full", false, "fetch every track of every show (one request per show)")
+	return cmd
+}
+
+// emitFullPlaylists fetches each listed show's complete flowsheet. --json
+// emits a JSON array of the server's show bodies, byte-for-byte; the table
+// lists one row per track, tagged with its show's date and id.
+func emitFullPlaylists(cmd *cobra.Command, app *App, playlists []api.Playlist) error {
+	bodies := make([]json.RawMessage, 0, len(playlists))
+	var rows [][]string
+	for _, p := range playlists {
+		show, raw, err := app.client.Show(cmd.Context(), p.Show)
+		if err != nil {
+			return fmt.Errorf("show %d: %w", p.Show, err)
+		}
+		bodies = append(bodies, raw)
+		date := p.Date
+		if len(date) >= 10 {
+			date = date[:10]
+		}
+		for _, e := range inPlayOrder(show.Entries) {
+			if e.EntryType != "track" {
+				continue
+			}
+			rows = append(rows, []string{date, strconv.Itoa(p.Show), e.ArtistName, e.TrackTitle, e.AlbumTitle})
+		}
+	}
+	combined, err := json.Marshal(bodies)
+	if err != nil {
+		return err
+	}
+	return app.render.EmitRaw(combined, []string{"DATE", "SHOW", "ARTIST", "TRACK", "ALBUM"}, rows)
 }
 
 // resolveDJID uses the positional arg when given, otherwise falls back to the

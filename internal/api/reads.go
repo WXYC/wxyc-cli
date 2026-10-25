@@ -56,6 +56,14 @@ func (c *Client) Playlists(ctx context.Context, djID string) ([]Playlist, []byte
 	return p, raw, err
 }
 
+// Show returns one show's metadata and every flowsheet entry in it, in play
+// order. The endpoint is public; a missing show is a 404.
+func (c *Client) Show(ctx context.Context, showID int) (Show, []byte, error) {
+	var s Show
+	raw, err := c.getInto(ctx, "/flowsheet/playlist", map[string]string{"show_id": strconv.Itoa(showID)}, &s)
+	return s, raw, err
+}
+
 // Rotation returns the current rotation as raw JSON. The shape is deep
 // (nested reconciled_identity, COALESCE fallbacks), so there is no decoded
 // projection at the client layer; the command decodes generically.

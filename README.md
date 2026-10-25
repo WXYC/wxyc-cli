@@ -27,6 +27,7 @@ wxyc labels list
 wxyc schedule
 wxyc bin list
 wxyc djs playlists               # your past shows; pass a dj_id for another DJ
+wxyc djs playlists --full        # every track of every one of your past shows
 ```
 
 Add `--json` to any command for machine-readable output. The rule is uniform:
@@ -70,6 +71,7 @@ Commands marked **[write]** mutate station state and require `--write` (or
 | Command | Description |
 |---------|-------------|
 | `wxyc flowsheet tail [-n <limit>]` | Show the most recent entries (default 10). |
+| `wxyc flowsheet show <show_id>` | Show every entry of one past or current show, in play order. Show ids come from `djs playlists`. |
 | `wxyc flowsheet start [--name <s>] [--as <s>] [--specialty <id>]` | **[write]** Start your show, or join the active show as co-host. |
 | `wxyc flowsheet add --track <t> [--artist <a>] [--album <a>] [--label <l>] [--album-id <id>] [--rotation-id <id>] [--segue] [--request]` | **[write]** Add a played track. `--track` is required; `--artist`/`--album` are required unless `--album-id` is given (the server backfills from it). |
 | `wxyc flowsheet talkset` | **[write]** Log a talkset. |
@@ -90,7 +92,7 @@ Commands marked **[write]** mutate station state and require `--write` (or
 
 | Command | Description |
 |---------|-------------|
-| `wxyc djs playlists [dj_id]` | List a DJ's past shows. Defaults to your own (read from the token). |
+| `wxyc djs playlists [dj_id] [--full]` | List a DJ's past shows. Defaults to your own (read from the token). Each show carries only a short preview; `--full` fetches every show's complete track list (one request per show) and lists one row per track — with `--json`, an array of full show bodies. |
 
 ### `labels` — record labels
 

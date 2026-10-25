@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -13,6 +14,7 @@ func newFlowsheetCmd(app *App) *cobra.Command {
 	fs := &cobra.Command{Use: "flowsheet", Short: "Read and manage the on-air flowsheet log"}
 	fs.AddCommand(
 		newFlowsheetTailCmd(app),
+		newFlowsheetShowCmd(app),
 		newFlowsheetStartCmd(app),
 		newFlowsheetAddCmd(app),
 		newFlowsheetMarkerCmd(app, "talkset", "Log a talkset", "Talkset", "talkset"),
@@ -336,6 +338,33 @@ func newFlowsheetTailCmd(app *App) *cobra.Command {
 	}
 	cmd.Flags().IntVarP(&n, "limit", "n", 10, "number of entries")
 	return cmd
+}
+
+func newFlowsheetShowCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <show_id>",
+		Short: "Show every entry of one show (ids from `djs playlists`)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			showID, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("show_id must be an integer, got %q", args[0])
+			}
+			show, raw, err := app.client.Show(cmd.Context(), showID)
+			if err != nil {
+				return err
+			}
+			return app.render.EmitRaw(raw, []string{"TYPE", "ARTIST", "TRACK", "ALBUM"}, entryRows(inPlayOrder(show.Entries)))
+		},
+	}
+}
+
+// inPlayOrder returns a show's entries sorted first-played first. The server
+// sends them newest-first; --json keeps that order, the table reads top-down.
+func inPlayOrder(entries []api.FlowsheetEntry) []api.FlowsheetEntry {
+	sorted := slices.Clone(entries)
+	slices.SortStableFunc(sorted, func(a, b api.FlowsheetEntry) int { return a.PlayOrder - b.PlayOrder })
+	return sorted
 }
 
 func entryRows(entries []api.FlowsheetEntry) [][]string {

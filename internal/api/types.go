@@ -203,7 +203,7 @@ type Label struct {
 
 // Playlist is one past show a DJ was on, as returned by /djs/playlists. The
 // server caps Preview at the show's first few flowsheet entries (in play order,
-// message rows excluded); there is no endpoint for a show's full track list.
+// message rows excluded); fetch the full track list with Client.Show.
 type Playlist struct {
 	Show          int              `json:"show"`
 	ShowName      string           `json:"show_name"`
@@ -211,6 +211,16 @@ type Playlist struct {
 	DJs           []PlaylistDJ     `json:"djs"`
 	SpecialtyShow string           `json:"specialty_show"`
 	Preview       []FlowsheetEntry `json:"preview"`
+}
+
+// Show is one show's metadata and its complete flowsheet, as returned by
+// /flowsheet/playlist. Only the fields the table renders are modeled; the
+// rest (legacy_dj_name, previous/next_show_id, …) pass through --json.
+type Show struct {
+	ID        int              `json:"id"`
+	StartTime string           `json:"start_time"`
+	EndTime   string           `json:"end_time"`
+	Entries   []FlowsheetEntry `json:"entries"`
 }
 
 // PlaylistDJ names one of the DJs credited on a show. DJName may be empty.
