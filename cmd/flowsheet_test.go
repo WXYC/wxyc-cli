@@ -322,3 +322,65 @@ func TestFlowsheetStart_Specialty(t *testing.T) {
 		})
 	}
 }
+
+func TestFlowsheetShow_ListsEveryEntry(t *testing.T) {
+	srv, _ := showServer(t, `[]`, map[string]string{"42": showFull42})
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	out, err := runCLI(t, "flowsheet", "show", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// All three tracks, not just a preview's worth.
+	for _, want := range []string{"White Fang", "Jarabi", "The Fakir", "talkset"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("table missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestFlowsheetShow_RejectsNonIntID(t *testing.T) {
+	t.Setenv("WXYC_JWT", "unused")
+	if _, err := runCLI(t, "flowsheet", "show", "abc"); err == nil {
+		t.Error("want error for non-integer show_id")
+	}
+}
+
+func TestFlowsheetShow_JSONIsServerBody(t *testing.T) {
+	srv, _ := showServer(t, `[]`, map[string]string{"42": showFull42})
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	out, err := runCLI(t, "--json", "flowsheet", "show", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"show_djs"`) || !strings.Contains(out, `"The Fakir"`) {
+		t.Errorf("--json should pass the full show through:\n%s", out)
+	}
+}
+
+func TestFlowsheetShow_TableIsInPlayOrder(t *testing.T) {
+	// The server returns a show's entries newest-first (play_order descending).
+	body := `{"id":42,"entries":[` +
+		`{"play_order":3,"entry_type":"show_end","dj_name":"Ryan Shaw"},` +
+		`{"play_order":2,"entry_type":"track","artist_name":"Little Mazarn","track_title":"White Fang"},` +
+		`{"play_order":1,"entry_type":"show_start","dj_name":"Ryan Shaw"}` +
+		`]}`
+	srv, _ := showServer(t, `[]`, map[string]string{"42": body})
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	out, err := runCLI(t, "flowsheet", "show", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, track, end := strings.Index(out, "show_start"), strings.Index(out, "White Fang"), strings.Index(out, "show_end")
+	if !(start < track && track < end) {
+		t.Errorf("table not in play order (start=%d track=%d end=%d):\n%s", start, track, end, out)
+	}
+}
