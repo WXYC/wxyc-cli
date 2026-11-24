@@ -6,6 +6,7 @@ import "fmt"
 // /library response; only the subset the CLI renders is modeled.
 type Album struct {
 	ID               int    `json:"id"`
+	ArtistID         int    `json:"artist_id"`
 	CodeLetters      string `json:"code_letters"`
 	CodeArtistNumber int    `json:"code_artist_number"`
 	CodeNumber       int    `json:"code_number"`
