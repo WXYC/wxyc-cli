@@ -72,6 +72,7 @@ Commands marked **[write]** mutate station state and require `--write` (or
 |---------|-------------|
 | `wxyc flowsheet tail [-n <limit>]` | Show the most recent entries (default 10). |
 | `wxyc flowsheet show <show_id>` | Show every entry of one past or current show, in play order. Show ids come from `djs playlists`. |
+| `wxyc flowsheet search [query] [-n <limit>] [--page <n>] [--sort date\|artist\|song\|dj] [--order asc\|desc] [--cursor <token>]` | Search the playlist archive by artist, track, album, label or DJ. With no query, lists the most recent tracks. `--limit` is 1 to 100 (default 50). Table shows date, DJ, artist, track and album, then a paging footer; date-sorted full pages print a `--cursor` token for the next page. |
 | `wxyc flowsheet start [--name <s>] [--as <s>] [--specialty <slug>]` | **[write]** Start your show, or join the active show as co-host. `--specialty` takes a specialty show's slug (e.g. `new-science-experience`); a numeric id is still accepted. |
 | `wxyc flowsheet add --track <t> [--artist <a>] [--album <a>] [--label <l>] [--album-id <id>] [--rotation-id <id>] [--segue] [--request]` | **[write]** Add a played track. `--track` is required; `--artist`/`--album` are required unless `--album-id` is given (the server backfills from it). |
 | `wxyc flowsheet talkset` | **[write]** Log a talkset. |
