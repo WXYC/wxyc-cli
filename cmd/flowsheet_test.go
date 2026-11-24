@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,8 +10,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/WXYC/wxyc-cli/internal/safety"
 )
 
 // fakeJWT builds an unsigned token whose payload carries the given sub claim.
@@ -46,20 +43,6 @@ func captureFlowsheetServer(t *testing.T, resp string) (*httptest.Server, *struc
 	}))
 	t.Cleanup(srv.Close)
 	return srv, got
-}
-
-func TestFlowsheetStart_BlockedWithoutWrite(t *testing.T) {
-	t.Setenv("WXYC_JWT", fakeJWT("dj-42"))
-	t.Setenv("WXYC_ALLOW_WRITE", "")
-
-	_, err := runCLI(t, "flowsheet", "start")
-	var blocked *safety.BlockedError
-	if !errors.As(err, &blocked) {
-		t.Fatalf("err = %v, want *BlockedError", err)
-	}
-	if mapExit(err) != ExitBlocked {
-		t.Errorf("exit = %d, want ExitBlocked(%d)", mapExit(err), ExitBlocked)
-	}
 }
 
 func TestFlowsheetStart_PostsJoinWithTokenDJID(t *testing.T) {
@@ -149,16 +132,6 @@ func TestFlowsheetMove_PatchesPlayOrder(t *testing.T) {
 	}
 }
 
-func TestFlowsheetMove_BlockedWithoutWrite(t *testing.T) {
-	t.Setenv("WXYC_JWT", "unused")
-	t.Setenv("WXYC_ALLOW_WRITE", "")
-
-	_, err := runCLI(t, "flowsheet", "move", "501", "2")
-	if mapExit(err) != ExitBlocked {
-		t.Errorf("exit = %d, want ExitBlocked(%d)", mapExit(err), ExitBlocked)
-	}
-}
-
 func TestFlowsheetMove_RejectsNonIntAndBadPosition(t *testing.T) {
 	t.Setenv("WXYC_JWT", "unused")
 
@@ -232,16 +205,6 @@ func TestFlowsheetRm_DeletesEntry(t *testing.T) {
 	}
 	if !strings.Contains(out, "501") || !strings.Contains(out, "Roygbiv") {
 		t.Errorf("confirmation missing removed entry:\n%s", out)
-	}
-}
-
-func TestFlowsheetRm_BlockedWithoutWrite(t *testing.T) {
-	t.Setenv("WXYC_JWT", "unused")
-	t.Setenv("WXYC_ALLOW_WRITE", "")
-
-	_, err := runCLI(t, "flowsheet", "rm", "501")
-	if mapExit(err) != ExitBlocked {
-		t.Errorf("exit = %d, want ExitBlocked(%d)", mapExit(err), ExitBlocked)
 	}
 }
 

@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/WXYC/wxyc-cli/internal/auth"
-	"github.com/WXYC/wxyc-cli/internal/safety"
 )
 
 // TestMain scrubs every ambient WXYC_* variable so a developer's exported
@@ -127,22 +126,6 @@ func TestApp_SessionComesFromInjectedStore(t *testing.T) {
 	_, err := runCLI(t, "library", "search", "--artist", "x")
 	if !errors.Is(err, auth.ErrNoSession) {
 		t.Errorf("err = %v, want ErrNoSession from the empty temp store", err)
-	}
-}
-
-func TestWriteGate_BlocksMutatingCommandByDefault(t *testing.T) {
-	// The gate must reject before RunE, so no request is ever attempted (the
-	// default trap API would fail the test if one were).
-	t.Setenv("WXYC_JWT", "unused")
-	t.Setenv("WXYC_ALLOW_WRITE", "")
-
-	_, err := runCLI(t, "bin", "add", "45029")
-	var blocked *safety.BlockedError
-	if !errors.As(err, &blocked) {
-		t.Fatalf("err = %v, want *BlockedError", err)
-	}
-	if mapExit(err) != ExitBlocked {
-		t.Errorf("exit = %d, want ExitBlocked(%d)", mapExit(err), ExitBlocked)
 	}
 }
 

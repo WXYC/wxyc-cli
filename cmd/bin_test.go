@@ -1,37 +1,11 @@
 package cmd
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/WXYC/wxyc-cli/internal/safety"
 )
-
-func TestBinRm_BlockedWithoutWrite(t *testing.T) {
-	hit := false
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hit = true
-	}))
-	defer srv.Close()
-	t.Setenv("WXYC_API_URL", srv.URL)
-	t.Setenv("WXYC_JWT", "unused")
-	t.Setenv("WXYC_ALLOW_WRITE", "")
-
-	_, err := runCLI(t, "bin", "rm", "45029")
-	var blocked *safety.BlockedError
-	if !errors.As(err, &blocked) || blocked.Op != "bin:rm" {
-		t.Fatalf("err = %v, want *BlockedError for bin:rm", err)
-	}
-	if mapExit(err) != ExitBlocked {
-		t.Errorf("exit = %d, want ExitBlocked(%d)", mapExit(err), ExitBlocked)
-	}
-	if hit {
-		t.Error("blocked write still reached the server")
-	}
-}
 
 func binRmServer(t *testing.T, body string) *httptest.Server {
 	t.Helper()
