@@ -19,6 +19,11 @@ func newLoginCmd(app *App) *cobra.Command {
 		Short: "Sign in and store a session token (password never stored)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Refuse a profile the store can't hold before prompting, so
+			// login never sends a password it then can't save.
+			if err := app.sessionStore().CheckProfile(app.cfg.Profile); err != nil {
+				return err
+			}
 			fmt.Fprint(app.stderr, "WXYC email or username: ")
 			// Ctrl-C cancels the context; awaitCtx lets login return at once
 			// rather than wait for a line that may never come.

@@ -54,17 +54,19 @@ func TestRenderer_TableTruncatesLongCells(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := buf.String()
-	// No single line should be anywhere near the untruncated 200 chars.
-	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
-		if len([]rune(line)) > maxCellWidth+8 { // +slack for padding/other cols
-			t.Errorf("line not truncated (%d runes): %q", len([]rune(line)), line)
-		}
+	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("want header + 2 rows:\n%s", got)
 	}
-	if !strings.Contains(got, "…") {
-		t.Errorf("truncated cell should carry an ellipsis:\n%s", got)
+	// One column, so the long row is exactly the truncated cell: the first
+	// maxCellWidth-1 runes and an ellipsis, maxCellWidth runes in all.
+	want := strings.Repeat("x", maxCellWidth-1) + "…"
+	if cell := strings.TrimRight(lines[1], " "); cell != want {
+		t.Errorf("truncated cell = %q (%d runes), want %q (%d runes)",
+			cell, len([]rune(cell)), want, maxCellWidth)
 	}
-	if !strings.Contains(got, "short") {
-		t.Errorf("short cell should be intact:\n%s", got)
+	if cell := strings.TrimRight(lines[2], " "); cell != "short" {
+		t.Errorf("short cell = %q, want it intact", cell)
 	}
 }
 

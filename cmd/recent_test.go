@@ -75,10 +75,10 @@ func TestFlowsheetRecent_OutOfRangeSendsNothing(t *testing.T) {
 }
 
 func TestFlowsheetRecent_Table(t *testing.T) {
-	inZone(t, mustZone(t, "America/New_York"), time.Date(2026, 11, 24, 23, 0, 0, 0, time.UTC))
+	app := zonedApp(t, mustZone(t, "America/New_York"), time.Date(2026, 11, 24, 23, 0, 0, 0, time.UTC))
 	var hits int32
 	recentServer(t, nil, &hits)
-	out, err := runCLI(t, "flowsheet", "recent")
+	out, err := runApp(t, app, "flowsheet", "recent")
 	if err != nil {
 		t.Fatal(err)
 	}

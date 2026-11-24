@@ -37,7 +37,7 @@ Show ids feed straight into ` + "`wxyc flowsheet show <id>`" + `.`,
 			if err != nil {
 				return err
 			}
-			loc := rangeLoc()
+			loc := app.loc
 			rows := make([][]string, 0, len(r.Shows))
 			for _, s := range r.Shows {
 				end := "on air"

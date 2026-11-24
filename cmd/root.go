@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/WXYC/wxyc-cli/internal/auth"
 	"github.com/spf13/cobra"
@@ -35,7 +36,8 @@ func newRoot(app *App) *cobra.Command {
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			app.build(profile, jsonOut, allowWrite)
-			// Enforce the client-side write gate before any command runs.
+			// Enforce the client-side write gate before any command runs,
+			// and first, so a blocked write always exits ExitBlocked.
 			mutates := cmd.Annotations[annMutates] == "true"
 			return app.gate.Authorize(cmd.Annotations[annOp], mutates)
 		},
@@ -68,6 +70,8 @@ func Execute() int {
 		stderr:       os.Stderr,
 		stdin:        os.Stdin,
 		readPassword: terminalPassword,
+		loc:          time.Local,
+		now:          time.Now,
 	}
 	ctx, stop := interruptContext(context.Background())
 	defer stop()

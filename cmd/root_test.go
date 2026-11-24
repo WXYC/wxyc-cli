@@ -59,6 +59,8 @@ func newTestApp(t *testing.T) *App {
 			t.Error("unexpected password prompt")
 			return nil, errors.New("no password in tests")
 		},
+		loc: time.Local,
+		now: time.Now,
 	}
 }
 
@@ -457,5 +459,60 @@ func TestApp_RequestTimeoutExcludesTokenExchange(t *testing.T) {
 	}
 	if tr.AttemptTimeout != defaultRequestTimeout || defaultRequestTimeout != 30*time.Second {
 		t.Errorf("AttemptTimeout = %v, want 30s", tr.AttemptTimeout)
+	}
+}
+
+// With WXYC_JWT no session store is used, so the profile name is never a
+// file name and must not be checked: an agent with WXYC_PROFILE=team/ci
+// set for other tools still runs.
+func TestRoot_StaticJWTIgnoresProfileName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+	t.Setenv("WXYC_PROFILE", "team/ci")
+	if _, err := runCLI(t, "library", "search", "--artist", "x"); err != nil {
+		t.Errorf("err = %v, want nil", err)
+	}
+}
+
+// Without WXYC_JWT a read loads the session through the store, which
+// refuses a name it can't hold before any request is sent (the trap
+// server fails the test otherwise).
+func TestRoot_FileStoreRejectsPathProfileOnRead(t *testing.T) {
+	t.Setenv("WXYC_PROFILE", "a/b")
+	if _, err := runCLI(t, "flowsheet", "tail"); err == nil || !strings.Contains(err.Error(), `invalid profile name "a/b"`) {
+		t.Errorf("err = %v, want an invalid profile error", err)
+	}
+}
+
+// The write gate runs before the store sees the profile: a blocked write
+// exits 2 (write blocked) even under a name the file store refuses, so a
+// script keyed on that code isn't told something else.
+func TestRoot_BlockedWriteWithBadProfileExitsBlocked(t *testing.T) {
+	t.Setenv("WXYC_PROFILE", "a/b")
+	app := newTestApp(t)
+	var out, errbuf bytes.Buffer
+	app.stdout, app.stderr = &out, &errbuf
+	if code := execute(context.Background(), app, []string{"bin", "add", "5"}); code != ExitBlocked {
+		t.Errorf("exit = %d, want %d (stderr %q)", code, ExitBlocked, errbuf.String())
+	}
+}
+
+// An App built without a zone or clock (any entry point other than Execute)
+// falls back to the system's rather than panicking on first use.
+func TestBuild_DefaultsZoneAndClock(t *testing.T) {
+	app := &App{getenv: func(string) string { return "" }}
+	app.build("", false, false)
+	if app.loc != time.Local {
+		t.Errorf("loc = %v, want time.Local", app.loc)
+	}
+	if app.now == nil {
+		t.Fatal("now = nil, want time.Now")
+	}
+	if d := time.Since(app.now()); d < 0 || d > time.Minute {
+		t.Errorf("now() is %v off the system clock", d)
 	}
 }

@@ -16,13 +16,6 @@ import (
 // maxRange is the server's MAX_RANGE_MS: the longest window it will serve.
 const maxRange = 8 * 24 * time.Hour
 
-// The local zone and clock that bare dates, zoneless times and
-// today/yesterday/now resolve against; swapped in tests.
-var (
-	rangeLoc = func() *time.Location { return time.Local }
-	rangeNow = time.Now
-)
-
 // Zoneless forms, read as local wall time.
 var localLayouts = []string{
 	"2006-01-02T15:04:05",
@@ -135,8 +128,8 @@ The window ends after it starts and is at most 8 days long.`,
   wxyc flowsheet range --since 2026-11-20T22:00:00Z --until 2026-11-21T02:00:00Z`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			loc := rangeLoc()
-			start, end, err := rangeWindow(since, until, loc, rangeNow())
+			loc := app.loc
+			start, end, err := rangeWindow(since, until, loc, app.now())
 			if err != nil {
 				return err
 			}
