@@ -64,7 +64,7 @@ Pages are zero-based.
 			if err != nil {
 				return err
 			}
-			combined, err := json.Marshal(map[string]json.RawMessage{"artist": cardRaw, "releases": relsRaw})
+			combined, err := combineRaw(map[string]json.RawMessage{"artist": cardRaw, "releases": relsRaw})
 			if err != nil {
 				return err
 			}

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -373,18 +372,6 @@ func hasNextPage(p api.AlbumReviewsPage) bool {
 		return *pg.HasMore
 	}
 	return pg.Total != nil && pg.Limit > 0 && *pg.Total > pg.Page*pg.Limit
-}
-
-// combineRaw wraps several raw server bodies in one JSON value for --json.
-// Unlike json.Marshal it leaves "&", "<" and ">" as the server sent them.
-func combineRaw(v any) ([]byte, error) {
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
 }
 
 func newReviewsForCmd(app *App) *cobra.Command {

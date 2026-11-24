@@ -195,3 +195,14 @@ func TestLibrarySearch_ShowsArtistID(t *testing.T) {
 		t.Errorf("search table:\n%s", out)
 	}
 }
+
+func TestLibraryArtist_JSONKeepsHTMLCharacters(t *testing.T) {
+	artistServer(t, strings.Replace(artistReleases, "Aluminum Tunes", htmlText, 1), 0)
+	out, err := runCLI(t, "library", "artist", "812", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, htmlText) {
+		t.Errorf("--json altered %q:\n%s", htmlText, out)
+	}
+}
