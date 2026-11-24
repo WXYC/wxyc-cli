@@ -21,6 +21,7 @@ func newFlowsheetCmd(app *App) *cobra.Command {
 		newFlowsheetShowCmd(app),
 		newFlowsheetSearchCmd(app),
 		newFlowsheetRangeCmd(app),
+		newFlowsheetRecentCmd(app),
 		newFlowsheetStartCmd(app),
 		newFlowsheetAddCmd(app),
 		newFlowsheetMarkerCmd(app, "talkset", "Log a talkset", "Talkset", "talkset"),
