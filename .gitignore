@@ -5,3 +5,4 @@
 # Local env
 *.token
 .env
+.sprite
