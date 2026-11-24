@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/zalando/go-keyring"
@@ -25,6 +26,10 @@ const keyringService = "wxyc-cli"
 // never stored — only the session token, which the TokenProvider exchanges for
 // short-lived JWTs.
 type Store interface {
+	// CheckProfile reports whether the store can hold a session under
+	// profile, so a caller can refuse a bad name before doing any work
+	// (login checks it before asking for a password).
+	CheckProfile(profile string) error
 	Save(profile, token string) error
 	Load(profile string) (string, error)
 	Clear(profile string) error
@@ -32,6 +37,17 @@ type Store interface {
 
 // KeyringStore keeps the session token in the OS keychain.
 type KeyringStore struct{}
+
+// CheckProfile refuses only an empty name. The keychain keys a session by an
+// opaque account name, so slashes and the like are harmless there, and
+// sessions saved under such names before file-name rules existed must stay
+// usable.
+func (KeyringStore) CheckProfile(profile string) error {
+	if profile == "" {
+		return fmt.Errorf("invalid profile name %q: it can't be empty", profile)
+	}
+	return nil
+}
 
 func (KeyringStore) Save(profile, token string) error {
 	return keyring.Set(keyringService, profile, token)
@@ -62,21 +78,46 @@ type FileStore struct {
 	Dir string
 }
 
-// ValidateProfile refuses a profile name that isn't a plain file name. The
-// file store keeps a profile's token at Dir/<profile>.token, so a name with a
-// separator could reach outside Dir; it is refused, never cleaned. "." and
-// ".." read as paths and are refused too. Dots elsewhere ("stage..2") are
-// fine: without a separator the name stays inside Dir.
-func ValidateProfile(profile string) error {
-	if profile == "" || profile == "." || profile == ".." || strings.ContainsAny(profile, `/\`) {
-		return fmt.Errorf("invalid profile name %q: it can't be empty, \".\" or \"..\", or contain a slash or backslash", profile)
+// CheckProfile refuses a profile name that isn't a safe, portable file name.
+// The token lives at Dir/<profile>.token, so the name must stay inside Dir
+// on every OS: only letters, digits, '.', '-' and '_' are allowed (no
+// separators, no ':' for a Windows drive or alternate data stream), "." and
+// ".." are refused, and so are Windows device names (CON, NUL, COM1, ...),
+// which Windows reserves even with an extension. Dots elsewhere
+// ("stage..2") are fine. A bad name is refused, never cleaned.
+func (FileStore) CheckProfile(profile string) error {
+	if profile == "" || profile == "." || profile == ".." || !safeName(profile) || windowsDevice(profile) {
+		return fmt.Errorf("invalid profile name %q: use only letters, digits, '.', '-' and '_', not \".\" or \"..\" or a Windows device name such as CON", profile)
 	}
 	return nil
 }
 
+func safeName(s string) bool {
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// windowsDevice reports whether name, up to its first dot, is a device name
+// Windows reserves in every directory.
+func windowsDevice(name string) bool {
+	stem, _, _ := strings.Cut(name, ".")
+	switch stem = strings.ToUpper(stem); stem {
+	case "CON", "PRN", "AUX", "NUL":
+		return true
+	}
+	return len(stem) == 4 && (strings.HasPrefix(stem, "COM") || strings.HasPrefix(stem, "LPT")) &&
+		stem[3] >= '0' && stem[3] <= '9'
+}
+
 // path is the profile's token file, inside Dir.
 func (f FileStore) path(profile string) (string, error) {
-	if err := ValidateProfile(profile); err != nil {
+	if err := f.CheckProfile(profile); err != nil {
 		return "", err
 	}
 	return filepath.Join(f.Dir, profile+".token"), nil
@@ -109,7 +150,27 @@ func (f FileStore) Save(profile, token string) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), p)
+	if err := os.Rename(tmp.Name(), p); err != nil {
+		return err
+	}
+	// Sync the directory too, or a crash can lose the rename and with it
+	// the session login just reported saved.
+	return syncDir(f.Dir)
+}
+
+// syncDir flushes a directory's entries to disk. It is a variable so tests
+// can observe it. Windows can't open a directory for syncing, and NTFS
+// journals the rename itself, so there it does nothing.
+var syncDir = func(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
 }
 
 func (f FileStore) Load(profile string) (string, error) {

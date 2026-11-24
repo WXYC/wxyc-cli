@@ -85,6 +85,46 @@ func TestLogin_SavesSessionTokenNotPassword(t *testing.T) {
 	})
 }
 
+// A profile the store can't hold is refused before any prompt, so login
+// never sends a password it then can't save. newTestApp's password reader
+// fails the test if it is reached.
+func TestLogin_RejectsBadProfileBeforePrompting(t *testing.T) {
+	app := newTestApp(t)
+	_, err := runApp(t, app, "login", "--profile", "../../x")
+	if want := `invalid profile name "../../x"`; err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// slashStore stands in for the keychain: it holds any non-empty name,
+// slashes included.
+type slashStore struct{ m map[string]string }
+
+func (s slashStore) CheckProfile(p string) error { return auth.KeyringStore{}.CheckProfile(p) }
+func (s slashStore) Save(p, tok string) error    { s.m[p] = tok; return nil }
+func (s slashStore) Load(p string) (string, error) {
+	if tok, ok := s.m[p]; ok {
+		return tok, nil
+	}
+	return "", auth.ErrNoSession
+}
+func (s slashStore) Clear(p string) error { delete(s.m, p); return nil }
+
+// With the keychain, a profile with a slash (valid there before file-name
+// rules existed) still logs in.
+func TestLogin_KeychainAcceptsSlashProfile(t *testing.T) {
+	srv, _, _ := signInServer(t, "tok-a")
+	app, _ := loginApp(t, srv.URL, "dj\n", "pw")
+	store := slashStore{m: map[string]string{}}
+	app.newStore = func() auth.Store { return store }
+	if _, err := runApp(t, app, "login", "--profile", "team/a"); err != nil {
+		t.Fatalf("login err = %v", err)
+	}
+	if store.m["team/a"] != "tok-a" {
+		t.Errorf("store = %v, want team/a saved", store.m)
+	}
+}
+
 // Prompts belong on stderr so stdout stays clean for scripts.
 func TestLogin_PromptsGoToStderr(t *testing.T) {
 	srv, _, _ := signInServer(t, "tok")

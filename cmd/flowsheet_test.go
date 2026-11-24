@@ -676,6 +676,23 @@ func TestFlowsheetEdit_RejectsNegativeIDs(t *testing.T) {
 	}
 }
 
+// An explicit id of 0 is no real id either: edit would send album_id 0 and
+// add would silently treat it as unset. Both refuse it, sending nothing.
+func TestFlowsheet_RejectsExplicitZeroIDs(t *testing.T) {
+	t.Setenv("WXYC_JWT", "unused")
+	for _, flag := range []string{"--album-id", "--rotation-id"} {
+		want := flag + " must be a positive id, got 0"
+		for _, args := range [][]string{
+			{"flowsheet", "edit", "123", flag, "0", "--write"},
+			{"flowsheet", "add", "--track", "T", "--artist", "A", "--album", "B", flag, "0", "--write"},
+		} {
+			if _, err := runCLI(t, args...); err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("%v: err = %v, want %q", args, err, want)
+			}
+		}
+	}
+}
+
 // -n below 1 would otherwise be passed along and silently replaced by the
 // server's default; refuse it instead, sending nothing.
 func TestFlowsheetTail_RejectsLimitBelowOne(t *testing.T) {

@@ -462,31 +462,36 @@ func TestApp_RequestTimeoutExcludesTokenExchange(t *testing.T) {
 	}
 }
 
-// A profile name that could escape the token store's directory is refused
-// before any command runs, so login can't send a password it then can't
-// save, and a read never reaches the server.
-func TestRoot_RejectsPathProfile(t *testing.T) {
+// With WXYC_JWT no session store is used, so the profile name is never a
+// file name and must not be checked: an agent with WXYC_PROFILE=team/ci
+// set for other tools still runs.
+func TestRoot_StaticJWTIgnoresProfileName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
 	t.Setenv("WXYC_JWT", "unused")
-	for _, args := range [][]string{
-		{"--profile", "../../x", "flowsheet", "tail"},
-		{"--profile", "../../x", "login"},
-	} {
-		_, err := runCLI(t, args...)
-		if want := `invalid profile name "../../x"`; err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%v: err = %v, want %q", args, err, want)
-		}
-	}
-	t.Setenv("WXYC_PROFILE", "a/b")
-	if _, err := runCLI(t, "flowsheet", "tail"); err == nil || !strings.Contains(err.Error(), `invalid profile name "a/b"`) {
-		t.Errorf("WXYC_PROFILE=a/b: err = %v, want an invalid profile error", err)
+	t.Setenv("WXYC_PROFILE", "team/ci")
+	if _, err := runCLI(t, "library", "search", "--artist", "x"); err != nil {
+		t.Errorf("err = %v, want nil", err)
 	}
 }
 
-// The write gate runs before the profile check: a blocked write exits 2
-// (write blocked) whatever the profile, so a script keyed on that code
-// isn't told something else.
+// Without WXYC_JWT a read loads the session through the store, which
+// refuses a name it can't hold before any request is sent (the trap
+// server fails the test otherwise).
+func TestRoot_FileStoreRejectsPathProfileOnRead(t *testing.T) {
+	t.Setenv("WXYC_PROFILE", "a/b")
+	if _, err := runCLI(t, "flowsheet", "tail"); err == nil || !strings.Contains(err.Error(), `invalid profile name "a/b"`) {
+		t.Errorf("err = %v, want an invalid profile error", err)
+	}
+}
+
+// The write gate runs before the store sees the profile: a blocked write
+// exits 2 (write blocked) even under a name the file store refuses, so a
+// script keyed on that code isn't told something else.
 func TestRoot_BlockedWriteWithBadProfileExitsBlocked(t *testing.T) {
-	t.Setenv("WXYC_JWT", "unused")
 	t.Setenv("WXYC_PROFILE", "a/b")
 	app := newTestApp(t)
 	var out, errbuf bytes.Buffer

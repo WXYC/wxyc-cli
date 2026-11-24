@@ -39,12 +39,7 @@ func newRoot(app *App) *cobra.Command {
 			// Enforce the client-side write gate before any command runs,
 			// and first, so a blocked write always exits ExitBlocked.
 			mutates := cmd.Annotations[annMutates] == "true"
-			if err := app.gate.Authorize(cmd.Annotations[annOp], mutates); err != nil {
-				return err
-			}
-			// Refuse a bad profile before anything runs: login would
-			// otherwise send the password, then fail to save the session.
-			return auth.ValidateProfile(app.cfg.Profile)
+			return app.gate.Authorize(cmd.Annotations[annOp], mutates)
 		},
 	}
 

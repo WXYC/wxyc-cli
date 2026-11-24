@@ -108,7 +108,11 @@ func TestFileStore_RejectsPathProfiles(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "store")
 	s := FileStore{Dir: dir}
-	for _, p := range []string{"../x", "../../x", "a/b", "..", ".", "", `a\b`} {
+	for _, p := range []string{"../x", "../../x", "a/b", "..", ".", "", `a\b`,
+		// Names Windows would read as a drive, a stream or a device.
+		"C:x", "dj:stream", "CON", "nul", "Com1", "lpt9.x", "aux.stage",
+		// Anything else outside [A-Za-z0-9._-].
+		"a b", "a*b", "a?b", "a|b", `a"b`, "a<b", "a>b", "a\tb", "é"} {
 		want := fmt.Sprintf("invalid profile name %q", p)
 		if err := s.Save(p, "tok"); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Save(%q) = %v, want %q", p, err, want)
@@ -143,6 +147,88 @@ func TestFileStore_AllowsDotsInProfile(t *testing.T) {
 		if err := s.Clear(p); err != nil {
 			t.Errorf("Clear(%q) = %v", p, err)
 		}
+	}
+}
+
+// Names made of letters, digits, dots, dashes and underscores are kept,
+// including ones that merely start like a Windows device name.
+func TestFileStore_AllowsSafeProfiles(t *testing.T) {
+	s := FileStore{Dir: t.TempDir()}
+	for _, p := range []string{"default", "night_shift", "stage-2", "CONSOLE", "nully", "com10", "Lpt"} {
+		if err := s.CheckProfile(p); err != nil {
+			t.Errorf("CheckProfile(%q) = %v, want nil", p, err)
+		}
+		if err := s.Save(p, "tok"); err != nil {
+			t.Errorf("Save(%q) = %v", p, err)
+		}
+	}
+}
+
+// The keychain keys a session by an opaque account name, so a slash is
+// harmless there: a session saved under "team/a" before file-name rules
+// existed must stay usable. Only an empty name is refused.
+func TestKeyringStore_CheckProfile(t *testing.T) {
+	keyring.MockInit()
+	s := KeyringStore{}
+	for _, p := range []string{"team/a", `a\b`, "..", "dj:stream", "CON"} {
+		if err := s.CheckProfile(p); err != nil {
+			t.Errorf("CheckProfile(%q) = %v, want nil", p, err)
+		}
+		if err := s.Save(p, "tok-"+p); err != nil {
+			t.Fatalf("Save(%q) = %v", p, err)
+		}
+		if got, err := s.Load(p); err != nil || got != "tok-"+p {
+			t.Errorf("Load(%q) = %q, %v", p, got, err)
+		}
+		if err := s.Clear(p); err != nil {
+			t.Errorf("Clear(%q) = %v", p, err)
+		}
+	}
+	if err := s.CheckProfile(""); err == nil || !strings.Contains(err.Error(), `invalid profile name ""`) {
+		t.Errorf("CheckProfile(\"\") = %v, want an invalid profile error", err)
+	}
+}
+
+// Save syncs the directory after the rename, so the new entry survives a
+// crash: at the moment of the sync the token is already at its path.
+func TestFileStore_SaveSyncsDirAfterRename(t *testing.T) {
+	dir := t.TempDir()
+	s := FileStore{Dir: dir}
+	var synced []string
+	orig := syncDir
+	t.Cleanup(func() { syncDir = orig })
+	syncDir = func(d string) error {
+		b, err := os.ReadFile(filepath.Join(dir, "dj.token"))
+		if err != nil || string(b) != "tok" {
+			t.Errorf("at dir sync, dj.token = %q, %v; want the renamed token", b, err)
+		}
+		synced = append(synced, d)
+		return nil
+	}
+	if err := s.Save("dj", "tok"); err != nil {
+		t.Fatal(err)
+	}
+	if len(synced) != 1 || synced[0] != dir {
+		t.Errorf("synced %v, want [%s]", synced, dir)
+	}
+}
+
+// A failed directory sync fails the save: login must not report a session
+// it can't promise is on disk.
+func TestFileStore_SaveReportsDirSyncError(t *testing.T) {
+	s := FileStore{Dir: t.TempDir()}
+	orig := syncDir
+	t.Cleanup(func() { syncDir = orig })
+	syncDir = func(string) error { return errors.New("disk on fire") }
+	if err := s.Save("dj", "tok"); err == nil || !strings.Contains(err.Error(), "disk on fire") {
+		t.Errorf("Save = %v, want the sync error", err)
+	}
+}
+
+// The real directory sync works on a real directory.
+func TestSyncDir_RealDir(t *testing.T) {
+	if err := syncDir(t.TempDir()); err != nil {
+		t.Errorf("syncDir = %v", err)
 	}
 }
 
