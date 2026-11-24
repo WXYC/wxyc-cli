@@ -64,7 +64,7 @@ Commands marked **[write]** mutate station state and require `--write` (or
 
 | Command | Description |
 |---------|-------------|
-| `wxyc library search [--artist <name>] [--album <title>] [--on-streaming[=false]] [-n <limit>]` | Search the catalog by artist, album, and/or streaming availability. The `ARTIST_ID` column feeds `library artist`. |
+| `wxyc library search [--artist <name>] [--album <title>] [--on-streaming[=false]] [-n <limit>]` | Search the catalog by artist, album, and/or streaming availability; give at least one of the three (none is refused before any request). The `ARTIST_ID` column feeds `library artist`. |
 | `wxyc library show <album_id>` | Show an album's catalog record and its flowsheet plays by arm (direct, rotation, legacy; never summed). `--json` emits `{"album": <GET /library/info>, "play_counts": <GET /library/{id}/flowsheet-play-counts>}`, both bodies verbatim. |
 | `wxyc library artist <artist_id> [--genre <id>] [--page N] [-n <limit>]` | Show an artist's card (genre, shelf code, release and cross-reference counts), then a page of their releases with shelf codes. `--genre` scopes both to one genre; `--page` is zero-based. `--json` emits `{"artist": <GET /library/artists/{id}>, "releases": <GET /library/artists/{id}/releases>}`, both bodies verbatim. |
 | `wxyc library genres` | List the genre catalog. |
@@ -76,8 +76,8 @@ Commands marked **[write]** mutate station state and require `--write` (or
 | Command | Description |
 |---------|-------------|
 | `wxyc flowsheet now` | Show what's on air right now: status (`live`, `Auto DJ` on automation, or `unknown` when the server does not say), the DJs on air, and while live the show name, specialty program, request-line mode and its source, and the current spotlight; then the last track played. `--json` prints `{"flowsheet": <GET /flowsheet>, "djs_on_air": <GET /flowsheet/djs-on-air>}`, both server bodies verbatim. |
-| `wxyc flowsheet tail [-n <limit>]` | Show the most recent entries (default 10). |
-| `wxyc flowsheet show <show_id>` | Show every entry of one past or current show, in play order. Show ids come from `djs playlists`. |
+| `wxyc flowsheet tail [-n <limit>]` | Show the most recent entries (default 10, at most 200). |
+| `wxyc flowsheet show <show_id>` | Show every entry of one past or current show, in play order. Show ids come from `flowsheet recent`, `flowsheet range` and `djs playlists`. |
 | `wxyc flowsheet search [query] [-n <limit>] [--page <n>] [--sort date\|artist\|song\|dj] [--order asc\|desc] [--cursor <token>]` | Search the playlist archive by artist, track, album, label or DJ. With no query, lists the most recent tracks. `--limit` is 1 to 100 (default 50). Table shows date, DJ, artist, track and album, then a paging footer; date-sorted full pages print a `--cursor` token for the next page. |
 | `wxyc flowsheet range --since <time> [--until <time>]` | Show every entry logged in a time window, across shows, in play order and labeled by show. Times are RFC 3339, a local date and time (`2026-11-20 17:00`), a date (meaning that whole local day), `today`, `yesterday` or `now`. Without `--until` the window runs to the end of `--since`'s day if it is a date, otherwise to now. The window must end after it starts and be at most 8 days; a bad window is refused before any request. `--json` prints the server's `{shows, entries}` body. |
 | `wxyc flowsheet recent [--hours N]` | Show who was on recently: shows that started in the last N hours (1–168, default 24), newest first, with start, end (`on air` while open), show name and DJ handles (`?` for a hidden handle). Show ids feed `flowsheet show`. An out-of-range `--hours` is refused before any request. `--json` prints the server's `{shows}` body. |

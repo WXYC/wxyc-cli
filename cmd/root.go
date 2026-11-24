@@ -20,6 +20,10 @@ const (
 	annOp      = "op"      // short op id used in the write-gate error, e.g. "bin:add"
 )
 
+// writeTag prefixes every mutating command's Short, so a parent's command
+// list shows which subcommands need --write. newRoot adds it from annMutates.
+const writeTag = "[write] "
+
 // newRoot builds the command tree. app is populated in PersistentPreRunE and
 // shared by reference with every subcommand.
 func newRoot(app *App) *cobra.Command {
@@ -32,6 +36,7 @@ func newRoot(app *App) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "wxyc",
 		Short:         "WXYC backend CLI (read-only by default)",
+		Long:          rootLong,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
@@ -43,7 +48,7 @@ func newRoot(app *App) *cobra.Command {
 		},
 	}
 
-	root.PersistentFlags().StringVar(&profile, "profile", "", "credential profile (default \"default\")")
+	root.PersistentFlags().StringVar(&profile, "profile", "", "credential profile (also WXYC_PROFILE; default \"default\")")
 	root.PersistentFlags().BoolVar(&jsonOut, "json", false, "emit JSON instead of a table")
 	root.PersistentFlags().BoolVar(&allowWrite, "write", false, "permit mutating commands (also WXYC_ALLOW_WRITE=1)")
 
@@ -58,8 +63,41 @@ func newRoot(app *App) *cobra.Command {
 		newScheduleCmd(app),
 		newReviewsCmd(app),
 	)
+	tagWrites(root)
 	return root
 }
+
+// tagWrites prefixes writeTag to the Short of every command annotated as
+// mutating, so the tag can't drift from the annotation the write gate reads.
+func tagWrites(c *cobra.Command) {
+	if c.Annotations[annMutates] == "true" {
+		c.Short = writeTag + c.Short
+	}
+	for _, sub := range c.Commands() {
+		tagWrites(sub)
+	}
+}
+
+// rootLong is the root help: the scripting contract (environment and exit
+// codes, mirroring mapExit) for agents and scripts that read only --help.
+const rootLong = `WXYC backend CLI (read-only by default). Commands tagged [write] change
+server state and run only with --write or WXYC_ALLOW_WRITE=1.
+
+Environment:
+  WXYC_API_URL      backend REST base (default https://api.wxyc.org)
+  WXYC_AUTH_URL     auth base (default <WXYC_API_URL>/auth)
+  WXYC_PROFILE      credential profile, as --profile (default "default")
+  WXYC_JWT          use this JWT as is, bypassing login and the stored session
+  WXYC_ALLOW_WRITE  1 permits [write] commands, as --write
+
+Exit codes:
+  0    success
+  1    unclassified error
+  2    write blocked (read-only; pass --write)
+  3    not authenticated (no session, or 401)
+  4    forbidden (authenticated, but role lacks permission)
+  5    not found
+  130  interrupted (Ctrl-C)`
 
 // Execute runs the CLI against the real process (args, environment,
 // terminal, keychain) and returns a process exit code.

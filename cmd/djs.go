@@ -22,7 +22,10 @@ func newDJsPlaylistsCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "playlists [dj_id]",
 		Short: "List a DJ's past shows (defaults to your own)",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `List a DJ's past shows with a preview of each show's tracks.
+dj_id is the DJ's user id, the "sub" that "wxyc whoami" shows; without it,
+your own shows are listed. --full fetches every track of every show instead.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			djID, err := resolveDJID(cmd, app, args)
 			if err != nil {
