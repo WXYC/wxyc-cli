@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -477,5 +478,99 @@ func TestReviewsFor_RefusesBadID(t *testing.T) {
 	want := `album_id must be an integer from 1 to 2147483647, got "0"`
 	if err == nil || err.Error() != want {
 		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// The contract makes pagination.hasMore optional; total alone must still
+// name the next page.
+const albumReviewsNoHasMore = `{"album_reviews":[{"id":5521,"album_id":45029,"artist_name":"Stereolab",` +
+	`"album_title":"Dots and Loops","review":"Great late-night record.",` +
+	`"submitted_at":"2019-02-03T18:44:00.000Z","reviewer":"Sam Example 2/3/19"}],` +
+	`"pagination":{"page":%d,"limit":%d,"total":%d}}`
+
+func TestReviewsArchive_NextPageFromTotalWithoutHasMore(t *testing.T) {
+	reviewsServer(t, map[string]string{"/album-reviews": fmt.Sprintf(albumReviewsNoHasMore, 2, 10, 31)}, 0)
+	out, err := runApp(t, utcApp(t), "reviews", "archive", "--page", "2", "--limit", "10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "\npage 2 of 4 (31 reviews, 10 per page); next: --page 3\n") {
+		t.Errorf("missing next page:\n%s", out)
+	}
+}
+
+func TestReviewsArchive_LastPageFromTotalHasNoNext(t *testing.T) {
+	reviewsServer(t, map[string]string{"/album-reviews": fmt.Sprintf(albumReviewsNoHasMore, 4, 10, 31)}, 0)
+	out, err := runApp(t, utcApp(t), "reviews", "archive", "--page", "4", "--limit", "10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "\npage 4 of 4 (31 reviews, 10 per page)\n") {
+		t.Errorf("want a last page line with no next:\n%s", out)
+	}
+}
+
+func TestReviewsArchive_PastLastPageKeepsPageLine(t *testing.T) {
+	reviewsServer(t, map[string]string{"/album-reviews": `{"album_reviews":[],"pagination":{"page":9,"limit":10,"total":31,"hasMore":false}}`}, 0)
+	out, err := runCLI(t, "reviews", "archive", "--artist", "stereolab", "--page", "9", "--limit", "10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "no archived reviews\n\npage 9 of 4 (31 reviews, 10 per page)\n"; out != want {
+		t.Errorf("out = %q, want %q", out, want)
+	}
+}
+
+func TestReviewsFor_MoreArchiveFromTotalWithoutHasMore(t *testing.T) {
+	reviewsServer(t, map[string]string{
+		"/reviews":       "[]",
+		"/album-reviews": fmt.Sprintf(albumReviewsNoHasMore, 1, 100, 131),
+	}, 0)
+	out, err := runCLI(t, "reviews", "for", "45029")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "more archived reviews: wxyc reviews archive --album 45029 --page 2 --limit 100"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q:\n%s", want, out)
+	}
+}
+
+func TestReviewsList_WhitespaceTextShowsMedium(t *testing.T) {
+	blank := strings.Replace(reviewDraft, `"review":null`, `"review":"\n "`, 1)
+	reviewsServer(t, map[string]string{"/reviews": "[" + blank + "]"}, 0)
+	out, err := runApp(t, utcApp(t), "reviews", "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "(handwritten)") {
+		t.Errorf("REVIEW cell should fall back to the medium:\n%s", out)
+	}
+}
+
+// A review's "&", "<" and ">" must reach --json as the server sent them, not
+// as \u0026, \u003c and \u003e.
+const htmlReviewText = `Simon & Garfunkel <3 > the rest`
+
+func TestReviewsShow_RevisionsJSONKeepsHTMLCharacters(t *testing.T) {
+	r := strings.Replace(reviewOne, `"fcc":"Track 4 has one f-word at 2:10."`, `"fcc":"`+htmlReviewText+`"`, 1)
+	reviewsServer(t, map[string]string{"/reviews/812": r, "/reviews/812/revisions": reviewRevisions}, 0)
+	out, err := runCLI(t, "reviews", "show", "812", "--revisions", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, htmlReviewText) {
+		t.Errorf("--json altered %q:\n%s", htmlReviewText, out)
+	}
+}
+
+func TestReviewsFor_JSONKeepsHTMLCharacters(t *testing.T) {
+	p := strings.Replace(albumReviewsPage, "Great late-night record.", htmlReviewText, 1)
+	reviewsServer(t, map[string]string{"/reviews": "[]", "/album-reviews": p}, 0)
+	out, err := runCLI(t, "reviews", "for", "45029", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, htmlReviewText) {
+		t.Errorf("--json altered %q:\n%s", htmlReviewText, out)
 	}
 }

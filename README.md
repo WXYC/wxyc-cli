@@ -122,7 +122,7 @@ Read-only. Authors and reviewers can be legal names: keep them inside the statio
 |---------|-------------|
 | `wxyc reviews list [--album <id>] [--intake <id>] [--mine]` | List the in-app reviews you may see (filters combine with AND). The REVIEW column is an excerpt; `--json` carries every review whole. With `--album`, cover reviews come first and are marked in a COVER column. |
 | `wxyc reviews show <id> [--revisions]` | Show one review's details and its full text (buzzwords, artist blurb, review, recommended tracks, FCC notes). `--revisions` adds the edit history. A draft you may not see exits 5. `--json` prints the body verbatim; with `--revisions`, `{"review": …, "revisions": …}`. |
-| `wxyc reviews archive [--album <id>] [--artist <name>] [--page N] [-n N]` | List the Google Form review archive, newest first (pages from 1; 1–100 per page, default 50). `--artist` ignores case and a leading "the". |
+| `wxyc reviews archive [--album <id>] [--artist <name>] [--page N] [-n\|--limit N]` | List the Google Form review archive, newest first (pages from 1; 1–100 per page, default 50). `--artist` ignores case and a leading "the". |
 | `wxyc reviews for <album_id>` | An album's in-app reviews and archived form reviews together. `--json` emits `{"reviews": <GET /reviews?album_id=>, "archive": <GET /album-reviews?album_id=>}`. |
 
 ### `schedule`

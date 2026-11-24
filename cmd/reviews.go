@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -141,7 +142,7 @@ func reviewRows(rs []api.Review, cover bool, loc *time.Location) [][]string {
 // reviewExcerpt is a review's text, or its medium for one with no text (a
 // handwritten slip needs none).
 func reviewExcerpt(text *string, medium string) string {
-	if t := deref(text); t != "" {
+	if t := deref(text); strings.TrimSpace(t) != "" {
 		return t
 	}
 	if medium != "" && medium != "typed" {
@@ -195,7 +196,7 @@ newest first.
 				if err != nil {
 					return err
 				}
-				if raw, err = json.Marshal(map[string]json.RawMessage{"review": raw, "revisions": revsRaw}); err != nil {
+				if raw, err = combineRaw(map[string]json.RawMessage{"review": raw, "revisions": revsRaw}); err != nil {
 					return err
 				}
 				blocks = append(blocks, output.Table{
@@ -271,7 +272,7 @@ func newReviewsArchiveCmd(app *App) *cobra.Command {
 	var artist string
 	var page, limit int
 	cmd := &cobra.Command{
-		Use:   "archive [--album <id>] [--artist <name>] [--page N] [--limit N]",
+		Use:   "archive [--album <id>] [--artist <name>] [--page N] [-n|--limit N]",
 		Short: "List the album-review form archive",
 		Long: `List the Google Form album-review archive, newest first, one page at a time
 (pages start at 1; the server's default page size is 50). --artist matches
@@ -308,7 +309,10 @@ excerpt; --json carries the server's page verbatim.`,
 				return err
 			}
 			blocks := []output.Block{archiveTable(p, app.loc, "")}
-			if len(p.AlbumReviews) > 0 {
+			// An empty page past the end still says where it is, so it doesn't
+			// read as an artist or album with no reviews at all.
+			pg := p.Pagination
+			if len(p.AlbumReviews) > 0 || pg.Page > 1 || (pg.Total != nil && *pg.Total > 0) {
 				blocks = append(blocks, output.Note(archivePageLine(p)))
 			}
 			return app.render.EmitRawBlocks(raw, blocks...)
@@ -355,10 +359,32 @@ func archivePageLine(p api.AlbumReviewsPage) string {
 	} else if pg.Limit > 0 {
 		line += fmt.Sprintf(" (%d per page)", pg.Limit)
 	}
-	if pg.HasMore != nil && *pg.HasMore {
+	if hasNextPage(p) {
 		line += fmt.Sprintf("; next: --page %d", pg.Page+1)
 	}
 	return line
+}
+
+// hasNextPage reports whether a page follows p: hasMore when the server
+// sends it, else whether total runs past this page.
+func hasNextPage(p api.AlbumReviewsPage) bool {
+	pg := p.Pagination
+	if pg.HasMore != nil {
+		return *pg.HasMore
+	}
+	return pg.Total != nil && pg.Limit > 0 && *pg.Total > pg.Page*pg.Limit
+}
+
+// combineRaw wraps several raw server bodies in one JSON value for --json.
+// Unlike json.Marshal it leaves "&", "<" and ">" as the server sent them.
+func combineRaw(v any) ([]byte, error) {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
 }
 
 func newReviewsForCmd(app *App) *cobra.Command {
@@ -389,7 +415,7 @@ command that lists them.
 			if err != nil {
 				return err
 			}
-			combined, err := json.Marshal(map[string]json.RawMessage{"reviews": rsRaw, "archive": pRaw})
+			combined, err := combineRaw(map[string]json.RawMessage{"reviews": rsRaw, "archive": pRaw})
 			if err != nil {
 				return err
 			}
@@ -402,7 +428,7 @@ command that lists them.
 				},
 				archiveTable(p, app.loc, "form archive"),
 			}
-			if p.Pagination.HasMore != nil && *p.Pagination.HasMore {
+			if hasNextPage(p) {
 				blocks = append(blocks, output.Note(fmt.Sprintf(
 					"more archived reviews: wxyc reviews archive --album %s --page %d --limit %d",
 					albumID, p.Pagination.Page+1, albumReviewsLimitMax)))

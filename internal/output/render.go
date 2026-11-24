@@ -140,8 +140,8 @@ func (r Renderer) EmitRawTables(raw []byte, tables ...Table) error {
 	return r.EmitRawBlocks(raw, blocks...)
 }
 
-// Block is one part of a table-mode result drawn by EmitRawBlocks: a Table
-// or a Text.
+// Block is one part of a table-mode result drawn by EmitRawBlocks: a Table,
+// a Text or a Note.
 type Block interface {
 	write(r Renderer) error
 }
