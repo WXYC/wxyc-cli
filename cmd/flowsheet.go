@@ -482,9 +482,72 @@ func newFlowsheetShowCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if !app.render.JSON {
+				// --json stays the raw server body; the header is table-only.
+				fmt.Fprint(app.stdout, showHeader(show))
+			}
 			return app.render.EmitRaw(raw, []string{"TYPE", "ARTIST", "TRACK", "ALBUM"}, entryRows(inPlayOrder(show.Entries)))
 		},
 	}
+}
+
+// showHeader is the table view's preamble for one show: its name, specialty
+// program, airtime, DJs (marking any who left) and the adjacent show ids to
+// page through the archive with, followed by a blank line.
+func showHeader(s api.Show) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "show %d", s.ID)
+	if s.ShowName != nil && *s.ShowName != "" {
+		fmt.Fprintf(&b, ": %s", *s.ShowName)
+	}
+	b.WriteByte('\n')
+	if s.Specialty != nil {
+		fmt.Fprintf(&b, "program: %s\n", s.Specialty.Name)
+	}
+	end := "(no end)"
+	if s.EndTime != nil {
+		end = *s.EndTime
+	}
+	fmt.Fprintf(&b, "time:    %s – %s\n", s.StartTime, end)
+	if djs := showDJNames(s); len(djs) > 0 {
+		fmt.Fprintf(&b, "djs:     %s\n", strings.Join(djs, ", "))
+	}
+	fmt.Fprintf(&b, "prev:    %s\n", showIDOrNone(s.PreviousShowID))
+	fmt.Fprintf(&b, "next:    %s\n\n", showIDOrNone(s.NextShowID))
+	return b.String()
+}
+
+// showDJNames lists a show's DJs, "(left)" marking any no longer on it. A
+// legacy show whose DJ had no account has no show_djs rows; its legacy_dj_name
+// stands in.
+func showDJNames(s api.Show) []string {
+	var names []string
+	for _, dj := range s.ShowDJs {
+		name := ""
+		switch {
+		case dj.DJName != nil && *dj.DJName != "":
+			name = *dj.DJName
+		case dj.ID != nil:
+			name = *dj.ID
+		default:
+			continue
+		}
+		if !dj.Active {
+			name += " (left)"
+		}
+		names = append(names, name)
+	}
+	if len(names) == 0 && s.LegacyDJName != nil && *s.LegacyDJName != "" {
+		names = append(names, *s.LegacyDJName)
+	}
+	return names
+}
+
+func showIDOrNone(id *int) string {
+	if id == nil {
+		return "none"
+	}
+	return strconv.Itoa(*id)
 }
 
 // inPlayOrder returns a show's entries sorted first-played first. The server
