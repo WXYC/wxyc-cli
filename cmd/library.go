@@ -111,17 +111,27 @@ func field(m map[string]any, key string) string {
 func newLibrarySearchCmd(app *App) *cobra.Command {
 	var artist, album string
 	var n int
+	var onStreaming, notOnStreaming bool
 	cmd := &cobra.Command{
 		Use:   "search",
 		Short: "Search the catalog by artist and/or album",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if onStreaming && notOnStreaming {
+				return fmt.Errorf("--on-streaming and --not-on-streaming are mutually exclusive")
+			}
 			params := map[string]string{}
 			if artist != "" {
 				params["artist_name"] = artist
 			}
 			if album != "" {
 				params["album_title"] = album
+			}
+			if onStreaming {
+				params["on_streaming"] = "true"
+			}
+			if notOnStreaming {
+				params["on_streaming"] = "false"
 			}
 			if n > 0 {
 				params["n"] = strconv.Itoa(n)
@@ -135,6 +145,8 @@ func newLibrarySearchCmd(app *App) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&artist, "artist", "", "artist name")
 	cmd.Flags().StringVar(&album, "album", "", "album title")
+	cmd.Flags().BoolVar(&onStreaming, "on-streaming", false, "only albums available on streaming")
+	cmd.Flags().BoolVar(&notOnStreaming, "not-on-streaming", false, "only albums not on streaming")
 	cmd.Flags().IntVarP(&n, "limit", "n", 0, "max results")
 	return cmd
 }
