@@ -21,6 +21,15 @@ type Client struct {
 	HTTP    *http.Client
 }
 
+// maxErrorBody caps how much of a StatusError's body Error() prints, so a
+// proxy's HTML error page isn't dumped whole to stderr.
+const maxErrorBody = 4096
+
+// maxErrorRead caps how much of a non-2xx body a StatusError stores. It is far
+// above maxErrorBody so a long JSON refusal stays whole and parseable by the
+// command layer; it only guards memory against a runaway error page.
+const maxErrorRead = 1 << 20
+
 // StatusError is returned for any non-2xx response. Code is the HTTP status;
 // the command layer maps it to an exit code (401→auth, 403→forbidden, …).
 type StatusError struct {
@@ -30,7 +39,12 @@ type StatusError struct {
 }
 
 func (e *StatusError) Error() string {
-	msg := strings.TrimSpace(e.Body)
+	msg := e.Body
+	if len(msg) > maxErrorBody {
+		// Cutting by bytes can split a multi-byte rune; drop the fragment.
+		msg = strings.ToValidUTF8(msg[:maxErrorBody], "")
+	}
+	msg = strings.TrimSpace(msg)
 	if msg == "" {
 		msg = http.StatusText(e.Code)
 	}
@@ -54,70 +68,31 @@ func (c *Client) getInto(ctx context.Context, path string, query map[string]stri
 	return raw, nil
 }
 
-// get decodes the response into out, discarding the raw bytes. Retained for
-// callers that don't need --json passthrough.
-func (c *Client) get(ctx context.Context, path string, query map[string]string, out any) error {
-	_, err := c.getInto(ctx, path, query, out)
-	return err
-}
-
-// getRaw is like get but returns the response body verbatim, for endpoints
+// getRaw fetches path and returns the response body verbatim, for endpoints
 // whose full shape the CLI passes through to --json without modeling it.
 func (c *Client) getRaw(ctx context.Context, path string, query map[string]string) ([]byte, error) {
-	return c.queryRaw(ctx, http.MethodGet, path, query)
+	return c.do(ctx, http.MethodGet, path, query, nil)
 }
 
 // deleteQueryRaw sends a body-less DELETE with its parameters in the query
 // string, for endpoints that read req.query (e.g. DELETE /djs/bin), unlike
 // deleteRaw which sends a JSON body.
 func (c *Client) deleteQueryRaw(ctx context.Context, path string, query map[string]string) ([]byte, error) {
-	return c.queryRaw(ctx, http.MethodDelete, path, query)
-}
-
-// queryRaw is the shared implementation behind getRaw/deleteQueryRaw: a
-// body-less request with query parameters, returning the response body
-// verbatim. Non-2xx becomes a StatusError.
-func (c *Client) queryRaw(ctx context.Context, method, path string, query map[string]string) ([]byte, error) {
-	u := c.BaseURL + path
-	if len(query) > 0 {
-		vals := url.Values{}
-		for k, v := range query {
-			vals.Set(k, v)
-		}
-		u += "?" + vals.Encode()
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-
-	res, err := c.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-
-	body, err := readBody(res, path)
-	if err != nil {
-		return nil, err
-	}
-	return body, nil
+	return c.do(ctx, http.MethodDelete, path, query, nil)
 }
 
 // postRaw sends a JSON body to path and returns the response body verbatim,
 // for mutating endpoints whose echoed entity the CLI both decodes (for a table
-// confirmation) and passes through to --json. Non-2xx becomes a StatusError.
+// confirmation) and passes through to --json.
 func (c *Client) postRaw(ctx context.Context, path string, in any) ([]byte, error) {
-	return c.bodyRaw(ctx, http.MethodPost, path, in)
+	return c.do(ctx, http.MethodPost, path, nil, in)
 }
 
 // patchRaw sends a JSON body to path via PATCH and returns the response body
 // verbatim, mirroring postRaw. Used by the mutating flowsheet endpoints that
 // update or reorder an entry and echo the projected row.
 func (c *Client) patchRaw(ctx context.Context, path string, in any) ([]byte, error) {
-	return c.bodyRaw(ctx, http.MethodPatch, path, in)
+	return c.do(ctx, http.MethodPatch, path, nil, in)
 }
 
 // deleteRaw sends a JSON body to path via DELETE and returns the response body
@@ -125,43 +100,21 @@ func (c *Client) patchRaw(ctx context.Context, path string, in any) ([]byte, err
 // http.NewRequestWithContext derives GetBody from the *bytes.Reader, so the auth
 // Transport's 401-retry rewind still works.
 func (c *Client) deleteRaw(ctx context.Context, path string, in any) ([]byte, error) {
-	return c.bodyRaw(ctx, http.MethodDelete, path, in)
+	return c.do(ctx, http.MethodDelete, path, nil, in)
 }
 
-// bodyRaw is the shared implementation behind postRaw/patchRaw/deleteRaw: it
-// marshals in as JSON, sends it with the given method, and returns the response
-// body verbatim. Non-2xx becomes a StatusError.
-func (c *Client) bodyRaw(ctx context.Context, method, path string, in any) ([]byte, error) {
-	body, err := json.Marshal(in)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	res, err := c.HTTP.Do(req)
+// do is the request path behind every method above that wants the response
+// body. The body is returned verbatim; on a 2xx, a failed read (e.g. the
+// connection dropped mid-body) is an error rather than a truncated success,
+// as is a body that isn't JSON (e.g. a proxy's HTML error page), named by
+// path. An empty body (204 No Content) is returned as is.
+func (c *Client) do(ctx context.Context, method, path string, query map[string]string, in any) ([]byte, error) {
+	res, err := c.send(ctx, method, path, query, in)
 	if err != nil {
 		return nil, err
 	}
 	defer res.Body.Close()
-
-	return readBody(res, path)
-}
-
-// readBody reads the whole response body. A non-2xx becomes a StatusError
-// (carrying whatever body arrived); on a 2xx, a failed read — e.g. the
-// connection dropped mid-body — is an error rather than a truncated success,
-// as is a body that isn't JSON (e.g. a proxy's HTML error page), named by
-// path. An empty body (204 No Content) is returned as is.
-func readBody(res *http.Response, path string) ([]byte, error) {
 	body, err := io.ReadAll(res.Body)
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, &StatusError{Code: res.StatusCode, Path: path, Body: string(body)}
-	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: reading response: %w", path, err)
 	}
@@ -171,34 +124,75 @@ func readBody(res *http.Response, path string) ([]byte, error) {
 	return body, nil
 }
 
-// post sends a JSON body to path. out may be nil when the response is ignored.
-func (c *Client) post(ctx context.Context, path string, in, out any) error {
-	body, err := json.Marshal(in)
+// doDiscard is do for writes that report nothing from the reply: once a 2xx
+// says the write landed, the body is drained and dropped, so a reply that
+// breaks mid-read or isn't JSON can't turn a completed write into a failure
+// (and a script into retrying it).
+func (c *Client) doDiscard(ctx context.Context, method, path string, in any) error {
+	res, err := c.send(ctx, method, path, nil, in)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(body))
-	if err != nil {
-		return err
+	_, _ = io.Copy(io.Discard, res.Body)
+	return res.Body.Close()
+}
+
+// send is the single request path under do and doDiscard. It encodes query
+// into the URL and, when in is non-nil, sends it as a JSON body; every request
+// asks for JSON back. A non-2xx becomes a StatusError carrying up to
+// maxErrorRead bytes of the body, with the rest drained so the connection can
+// be reused. On a 2xx the caller owns (and must close) res.Body.
+func (c *Client) send(ctx context.Context, method, path string, query map[string]string, in any) (*http.Response, error) {
+	u := c.BaseURL + path
+	if len(query) > 0 {
+		vals := url.Values{}
+		for k, v := range query {
+			vals.Set(k, v)
+		}
+		u += "?" + vals.Encode()
 	}
-	req.Header.Set("Content-Type", "application/json")
+
+	var reqBody io.Reader
+	if in != nil {
+		b, err := json.Marshal(in)
+		if err != nil {
+			return nil, err
+		}
+		reqBody = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u, reqBody)
+	if err != nil {
+		return nil, err
+	}
+	if in != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	req.Header.Set("Accept", "application/json")
 
 	res, err := c.HTTP.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer res.Body.Close()
-
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
-		return &StatusError{Code: res.StatusCode, Path: path, Body: string(b)}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(io.LimitReader(res.Body, maxErrorRead))
+		_, _ = io.Copy(io.Discard, res.Body)
+		return nil, &StatusError{Code: res.StatusCode, Path: path, Body: string(b)}
 	}
-	if out == nil {
-		return nil
+	return res, nil
+}
+
+// writeJSON is the body of a typed write method: it sends in to path and
+// decodes the echoed entity into a T, returning it alongside the raw bytes for
+// --json. A decode failure names path, like getInto's.
+func writeJSON[T any](ctx context.Context, c *Client, method, path string, in any) (T, []byte, error) {
+	var v T
+	raw, err := c.do(ctx, method, path, nil, in)
+	if err != nil {
+		return v, nil, err
 	}
-	if err := json.NewDecoder(res.Body).Decode(out); err != nil {
-		return fmt.Errorf("%s: decoding response: %w", path, err)
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return v, raw, fmt.Errorf("%s: decoding response: %w", path, err)
 	}
-	return nil
+	return v, raw, nil
 }

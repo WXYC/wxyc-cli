@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/WXYC/wxyc-cli/internal/config"
 	"github.com/WXYC/wxyc-cli/internal/output"
 	"github.com/WXYC/wxyc-cli/internal/safety"
-	"io"
 )
 
 // App holds the wired-up dependencies for a single CLI invocation. It is
