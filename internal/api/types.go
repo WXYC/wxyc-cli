@@ -237,12 +237,34 @@ type Playlist struct {
 
 // Show is one show's metadata and its complete flowsheet, as returned by
 // /flowsheet/playlist. Only the fields the table renders are modeled; the
-// rest (legacy_dj_name, previous/next_show_id, …) pass through --json.
+// rest (primary_dj_id, specialty_show_name, …) pass through --json.
 type Show struct {
-	ID        int              `json:"id"`
-	StartTime string           `json:"start_time"`
-	EndTime   string           `json:"end_time"`
-	Entries   []FlowsheetEntry `json:"entries"`
+	ID             int              `json:"id"`
+	ShowName       *string          `json:"show_name"`
+	Specialty      *SpecialtyRef    `json:"specialty"` // nil for a regular show
+	LegacyDJName   *string          `json:"legacy_dj_name"`
+	StartTime      string           `json:"start_time"`
+	EndTime        *string          `json:"end_time"` // nil while open (or never closed)
+	ShowDJs        []ShowDJ         `json:"show_djs"`
+	PreviousShowID *int             `json:"previous_show_id"` // nil on the oldest show
+	NextShowID     *int             `json:"next_show_id"`     // nil on the newest show
+	Entries        []FlowsheetEntry `json:"entries"`
+}
+
+// SpecialtyRef is the SpecialtyShowRef embedded in a show: its program.
+type SpecialtyRef struct {
+	ID        int    `json:"id"`
+	Slug      string `json:"slug"`
+	Name      string `json:"name"`
+	ShortName string `json:"short_name"`
+}
+
+// ShowDJ is one DJ credited on a show. ID is nil for a legacy DJ with no
+// account; DJName may be nil. Active is false once the DJ has left the show.
+type ShowDJ struct {
+	ID     *string `json:"id"`
+	DJName *string `json:"dj_name"`
+	Active bool    `json:"active"`
 }
 
 // PlaylistDJ names one of the DJs credited on a show. DJName may be empty.

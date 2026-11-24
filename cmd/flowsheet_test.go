@@ -628,3 +628,86 @@ func TestFlowsheetEdit_RefusesBadSpotlightInputBeforeRequest(t *testing.T) {
 		})
 	}
 }
+
+// showWithHeader mirrors GET /flowsheet/playlist's top level as getShowInfo
+// builds it: the shows row spread, specialty (SpecialtyShowRef), show_djs with
+// active, and the adjacent-show ids — here the oldest show, so no previous.
+const showWithHeader = `{"id":42,"show_name":"Late Night Static","primary_dj_id":"u1",` +
+	`"legacy_dj_name":null,"specialty_id":7,` +
+	`"start_time":"2026-07-17T17:59:38.121Z","end_time":"2026-07-17T20:59:04.215Z",` +
+	`"specialty_show_name":"The New Science Experience",` +
+	`"specialty":{"id":7,"slug":"new-science-experience","name":"The New Science Experience",` +
+	`"short_name":"NSE","tagline":null,"logs_playcuts":true},` +
+	`"show_djs":[{"id":"u1","dj_name":"DJ Alpha","active":true},` +
+	`{"id":"u2","dj_name":"DJ Beta","active":false}],` +
+	`"previous_show_id":null,"next_show_id":43,` +
+	`"entries":[{"play_order":1,"entry_type":"track","artist_name":"Little Mazarn","track_title":"White Fang"}]}`
+
+func TestFlowsheetShow_TablePrintsShowHeader(t *testing.T) {
+	srv, _ := showServer(t, `[]`, map[string]string{"42": showWithHeader})
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	out, err := runCLI(t, "flowsheet", "show", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"show 42: Late Night Static",
+		"program: The New Science Experience",
+		"time:    2026-07-17T17:59:38.121Z – 2026-07-17T20:59:04.215Z",
+		"djs:     DJ Alpha, DJ Beta (left)",
+		"prev:    none",
+		"next:    43",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("header missing %q:\n%s", want, out)
+		}
+	}
+	// The header sits above the entries table.
+	if h, e := strings.Index(out, "show 42"), strings.Index(out, "White Fang"); h < 0 || h > e {
+		t.Errorf("header not above entries:\n%s", out)
+	}
+}
+
+func TestFlowsheetShow_HeaderOmitsMissingProgramAndOpenEnd(t *testing.T) {
+	// A regular show (specialty null) still on the air (end_time null), with a
+	// legacy DJ who has no account and so no show_djs row.
+	body := `{"id":42,"show_name":null,"specialty":null,"legacy_dj_name":"Ryan Shaw",` +
+		`"start_time":"2026-07-17T17:59:38.121Z","end_time":null,"show_djs":[],` +
+		`"previous_show_id":41,"next_show_id":null,"entries":[]}`
+	srv, _ := showServer(t, `[]`, map[string]string{"42": body})
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	out, err := runCLI(t, "flowsheet", "show", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "program:") {
+		t.Errorf("regular show should have no program line:\n%s", out)
+	}
+	for _, want := range []string{"show 42\n", "time:    2026-07-17T17:59:38.121Z – (no end)", "djs:     Ryan Shaw", "prev:    41", "next:    none"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("header missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestFlowsheetShow_JSONHasNoHeader(t *testing.T) {
+	srv, _ := showServer(t, `[]`, map[string]string{"42": showWithHeader})
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	out, err := runCLI(t, "--json", "flowsheet", "show", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v map[string]any
+	if err := json.Unmarshal([]byte(out), &v); err != nil {
+		t.Fatalf("--json output is not pure JSON: %v\n%s", err, out)
+	}
+}
