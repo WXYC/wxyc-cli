@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -74,9 +75,15 @@ func newRotationCmd(app *App) *cobra.Command {
 				return err
 			}
 			// Rotation's wire shape is deep; project a table from a generic
-			// decode and pass the full JSON through in --json mode.
+			// decode and pass the full JSON through in --json mode. Only the
+			// table needs the decode, so --json stays lenient about shape. An
+			// empty body means nothing is in rotation.
 			var items []map[string]any
-			_ = json.Unmarshal(raw, &items)
+			if !app.render.JSON && len(bytes.TrimSpace(raw)) > 0 {
+				if err := json.Unmarshal(raw, &items); err != nil {
+					return fmt.Errorf("/library/rotation: decoding response: %w", err)
+				}
+			}
 			rows := make([][]string, 0, len(items))
 			for _, m := range items {
 				rows = append(rows, []string{

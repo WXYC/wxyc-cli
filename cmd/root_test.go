@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/WXYC/wxyc-cli/internal/auth"
 )
@@ -320,5 +323,132 @@ func TestLibrarySearch_OnStreamingQueryString(t *testing.T) {
 				t.Errorf("standalone filter sent extra params: %q", query.Encode())
 			}
 		})
+	}
+}
+
+// A body shaped differently from the expected array must be an error in table
+// mode, not a silent "no results".
+func TestRotation_TableDecodeErrorIsReported(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rotation":[{"artist_name":"X","rotation_bin":"H"}]}`))
+	}))
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	out, err := runCLI(t, "library", "rotation")
+	if err == nil || !strings.Contains(err.Error(), "/library/rotation: decoding response") {
+		t.Fatalf("err = %v (out %q), want a /library/rotation decoding error", err, out)
+	}
+}
+
+// hangingTokenApp returns an App whose stored session is exchanged against a
+// /token endpoint that never responds.
+func hangingTokenApp(t *testing.T) *App {
+	t.Helper()
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(release) })
+	t.Setenv("WXYC_AUTH_URL", srv.URL)
+
+	store := auth.FileStore{Dir: t.TempDir()}
+	if err := store.Save("default", "sess"); err != nil {
+		t.Fatal(err)
+	}
+	app := newTestApp(t)
+	app.newStore = func() auth.Store { return store }
+	return app
+}
+
+// runBounded runs fn and fails the test if it hasn't returned within d.
+func runBounded(t *testing.T, d time.Duration, fn func() error) error {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(d):
+		t.Fatalf("still blocked after %v", d)
+		return nil
+	}
+}
+
+// Commands that fetch a token directly (whoami, resolveDJID) are outside the
+// API client's timeout, so the token exchange needs its own.
+func TestWhoami_TokenExchangeTimesOut(t *testing.T) {
+	app := hangingTokenApp(t)
+	app.authTimeout = 100 * time.Millisecond
+
+	err := runBounded(t, 5*time.Second, func() error {
+		_, err := runApp(t, app, "whoami")
+		return err
+	})
+	if err == nil || !strings.Contains(err.Error(), "Client.Timeout exceeded") {
+		t.Fatalf("err = %v, want a client timeout", err)
+	}
+}
+
+func TestApp_TokenExchangeHasDefaultTimeout(t *testing.T) {
+	app := newTestApp(t)
+	app.build("", false, false)
+	if got := app.provider.HTTP.Timeout; got != 30*time.Second {
+		t.Errorf("token client timeout = %v, want 30s", got)
+	}
+}
+
+// Cancelling the root context (Ctrl-C) aborts an in-flight token exchange.
+func TestRun_ContextCancelAbortsTokenFetch(t *testing.T) {
+	app := hangingTokenApp(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	err := runBounded(t, 5*time.Second, func() error {
+		app.stdout, app.stderr = io.Discard, io.Discard
+		return run(ctx, app, []string{"whoami"})
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
+	}
+}
+
+// An empty 2xx rotation body means nothing is in rotation: an empty table, not
+// a JSON decode error.
+func TestRotation_EmptyBodyIsNoResults(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	out, err := runCLI(t, "library", "rotation")
+	if err != nil || out != "no results\n" {
+		t.Fatalf("rotation = %q, %v; want %q, nil", out, err, "no results\n")
+	}
+}
+
+// The API client must not put one deadline over the whole request: that
+// deadline would include the token exchange (up to authTimeout) and the 401
+// refresh, leaving a slow-but-healthy request no time. Each HTTP attempt is
+// bounded instead.
+func TestApp_RequestTimeoutExcludesTokenExchange(t *testing.T) {
+	app := newTestApp(t)
+	app.build("", false, false)
+	if got := app.client.HTTP.Timeout; got != 0 {
+		t.Errorf("API client whole-request timeout = %v, want none", got)
+	}
+	tr, ok := app.client.HTTP.Transport.(*auth.Transport)
+	if !ok {
+		t.Fatalf("API transport = %T, want *auth.Transport", app.client.HTTP.Transport)
+	}
+	if tr.AttemptTimeout != defaultRequestTimeout || defaultRequestTimeout != 30*time.Second {
+		t.Errorf("AttemptTimeout = %v, want 30s", tr.AttemptTimeout)
 	}
 }

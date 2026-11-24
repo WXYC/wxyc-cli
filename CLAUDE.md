@@ -50,7 +50,8 @@ exchange, transport, session store). `internal/safety` (write gate) and
   annotation.
 - **`cmd/exit.go`** — maps errors to process exit codes (`mapExit`). This is
   the CLI's machine-readable contract for scripts/agents: 0 ok, 1
-  unclassified, 2 write blocked, 3 unauthenticated, 4 forbidden, 5 not found.
+  unclassified, 2 write blocked, 3 unauthenticated, 4 forbidden, 5 not found,
+  130 interrupted (Ctrl-C).
   Any new error type that should surface as its own exit code gets mapped
   here via `errors.As`/`errors.Is`.
 - **`internal/api`** — `Client` wraps `http.Client` (which already carries the

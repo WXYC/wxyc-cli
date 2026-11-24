@@ -99,9 +99,9 @@ func (c *Client) queryRaw(ctx context.Context, method, path string, query map[st
 	}
 	defer res.Body.Close()
 
-	body, _ := io.ReadAll(res.Body)
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, &StatusError{Code: res.StatusCode, Path: path, Body: string(body)}
+	body, err := readBody(res, path)
+	if err != nil {
+		return nil, err
 	}
 	return body, nil
 }
@@ -149,11 +149,26 @@ func (c *Client) bodyRaw(ctx context.Context, method, path string, in any) ([]by
 	}
 	defer res.Body.Close()
 
-	b, _ := io.ReadAll(res.Body)
+	return readBody(res, path)
+}
+
+// readBody reads the whole response body. A non-2xx becomes a StatusError
+// (carrying whatever body arrived); on a 2xx, a failed read — e.g. the
+// connection dropped mid-body — is an error rather than a truncated success,
+// as is a body that isn't JSON (e.g. a proxy's HTML error page), named by
+// path. An empty body (204 No Content) is returned as is.
+func readBody(res *http.Response, path string) ([]byte, error) {
+	body, err := io.ReadAll(res.Body)
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, &StatusError{Code: res.StatusCode, Path: path, Body: string(b)}
+		return nil, &StatusError{Code: res.StatusCode, Path: path, Body: string(body)}
 	}
-	return b, nil
+	if err != nil {
+		return nil, fmt.Errorf("%s: reading response: %w", path, err)
+	}
+	if len(bytes.TrimSpace(body)) > 0 && !json.Valid(body) {
+		return nil, fmt.Errorf("%s: response is not valid JSON", path)
+	}
+	return body, nil
 }
 
 // post sends a JSON body to path. out may be nil when the response is ignored.
