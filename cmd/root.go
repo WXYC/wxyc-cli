@@ -10,6 +10,7 @@ import (
 
 	"github.com/WXYC/wxyc-cli/internal/auth"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // annotation keys carried on mutating commands.
@@ -57,24 +58,48 @@ func newRoot(app *App) *cobra.Command {
 	return root
 }
 
-// Execute runs the CLI and returns a process exit code.
+// Execute runs the CLI against the real process (args, environment,
+// terminal, keychain) and returns a process exit code.
 func Execute() int {
 	app := &App{
-		getenv:   os.Getenv,
-		newStore: auth.NewStore,
-		stdout:   os.Stdout,
-		stderr:   os.Stderr,
+		getenv:       os.Getenv,
+		newStore:     auth.NewStore,
+		stdout:       os.Stdout,
+		stderr:       os.Stderr,
+		stdin:        os.Stdin,
+		readPassword: terminalPassword,
 	}
 	ctx, stop := interruptContext(context.Background())
 	defer stop()
-	return report(os.Stderr, run(ctx, app, os.Args[1:]))
+	return execute(ctx, app, os.Args[1:])
+}
+
+// terminalPassword reads a password from the terminal without echo. On
+// Ctrl-C it restores the terminal state itself and returns ctx.Err(), so the
+// shell is never left with echo off: term.ReadPassword would only restore it
+// on return, which a blocked read never reaches before the process exits.
+func terminalPassword(ctx context.Context) ([]byte, error) {
+	fd := int(os.Stdin.Fd())
+	state, err := term.GetState(fd)
+	if err != nil {
+		return nil, err
+	}
+	return awaitCtx(ctx, func() { term.Restore(fd, state) }, func() ([]byte, error) {
+		return term.ReadPassword(fd)
+	})
+}
+
+// execute runs args on app, reports any error on app.stderr, and returns the
+// exit code. It is Execute minus the process wiring, so tests can drive the
+// stderr line and exit-code contract end to end.
+func execute(ctx context.Context, app *App, args []string) int {
+	return report(app.stderr, run(ctx, app, args))
 }
 
 // interruptContext returns a context cancelled by the first Ctrl-C, which
-// aborts any in-flight request. The handler is removed as soon as that signal
-// arrives, so a second Ctrl-C gets the default behaviour and kills the
-// process — the only way out of something that ignores the context, such as
-// login's username and password prompts.
+// aborts any in-flight request and login's prompts. The handler is removed as
+// soon as that signal arrives, so a second Ctrl-C gets the default behaviour
+// and kills the process — the way out of anything that ignores the context.
 func interruptContext(parent context.Context) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(parent)
 	sigs := make(chan os.Signal, 1)

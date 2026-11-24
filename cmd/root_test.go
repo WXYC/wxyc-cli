@@ -52,6 +52,13 @@ func newTestApp(t *testing.T) *App {
 			return ""
 		},
 		newStore: func() auth.Store { return auth.FileStore{Dir: t.TempDir()} },
+		// login gets an empty stdin and a password reader that fails the
+		// test, so a test that reaches a prompt errors instead of panicking.
+		stdin: strings.NewReader(""),
+		readPassword: func(context.Context) ([]byte, error) {
+			t.Error("unexpected password prompt")
+			return nil, errors.New("no password in tests")
+		},
 	}
 }
 
