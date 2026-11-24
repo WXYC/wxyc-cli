@@ -129,3 +129,31 @@ func TestBin_Remove_PropagatesForbidden(t *testing.T) {
 		t.Fatalf("BinRemove err = %v, want StatusError 403", err)
 	}
 }
+
+// POST /djs/bin replies 201 with the inserted row, but BinAdd reports nothing
+// from it. Once the status says the write landed, a reply body that breaks
+// mid-read or isn't JSON must not turn that success into a failure — a script
+// would retry a write that already happened.
+func TestBin_Add_SuccessIgnoresReplyBody(t *testing.T) {
+	tests := map[string]http.HandlerFunc{
+		"truncated": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Length", "100")
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte(`{"id":812,"album`))
+		},
+		"not json": func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte(`<html>proxy page</html>`))
+		},
+	}
+	for name, h := range tests {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(h)
+			defer srv.Close()
+			c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+			if err := c.BinAdd(context.Background(), 45029); err != nil {
+				t.Errorf("BinAdd() = %v, want nil after a 201", err)
+			}
+		})
+	}
+}

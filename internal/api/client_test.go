@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
-
-	"github.com/WXYC/wxyc-cli/internal/testutil"
 )
 
 func TestClient_GetInto_DecodesJSON(t *testing.T) {
@@ -139,26 +139,53 @@ func TestClient_Raw_EmptyBodyIsNotAnError(t *testing.T) {
 	}
 }
 
-// Every request path must send the JSON headers; testutil.CaptureServer fails
-// the test if Accept (always) or Content-Type (with a body) is missing.
+// Every request path must send the JSON headers: Accept always, and
+// Content-Type exactly when there is a body. Body-less calls (GET, the
+// query-string DELETE) must send no body at all — not even a JSON "null" —
+// and body-carrying calls must send one, with the method the endpoint expects.
 func TestClient_SendsJSONHeaders(t *testing.T) {
 	ctx := context.Background()
-	calls := map[string]func(c *Client) error{
-		"getRaw": func(c *Client) error { _, err := c.getRaw(ctx, "/x", map[string]string{"a": "1"}); return err },
-		"deleteQueryRaw": func(c *Client) error {
+	tests := []struct {
+		name   string
+		method string
+		body   bool
+		call   func(c *Client) error
+	}{
+		{"getRaw", http.MethodGet, false, func(c *Client) error { _, err := c.getRaw(ctx, "/x", map[string]string{"a": "1"}); return err }},
+		{"deleteQueryRaw", http.MethodDelete, false, func(c *Client) error {
 			_, err := c.deleteQueryRaw(ctx, "/x", map[string]string{"a": "1"})
 			return err
-		},
-		"postRaw":   func(c *Client) error { _, err := c.postRaw(ctx, "/x", map[string]int{"a": 1}); return err },
-		"patchRaw":  func(c *Client) error { _, err := c.patchRaw(ctx, "/x", map[string]int{"a": 1}); return err },
-		"deleteRaw": func(c *Client) error { _, err := c.deleteRaw(ctx, "/x", map[string]int{"a": 1}); return err },
-		"BinAdd":    func(c *Client) error { return c.BinAdd(ctx, 45029) },
+		}},
+		{"postRaw", http.MethodPost, true, func(c *Client) error { _, err := c.postRaw(ctx, "/x", map[string]int{"a": 1}); return err }},
+		{"patchRaw", http.MethodPatch, true, func(c *Client) error { _, err := c.patchRaw(ctx, "/x", map[string]int{"a": 1}); return err }},
+		{"deleteRaw", http.MethodDelete, true, func(c *Client) error { _, err := c.deleteRaw(ctx, "/x", map[string]int{"a": 1}); return err }},
+		{"BinAdd", http.MethodPost, true, func(c *Client) error { return c.BinAdd(ctx, 45029) }},
 	}
-	for name, call := range calls {
-		t.Run(name, func(t *testing.T) {
-			srv, _ := testutil.CaptureServer(t, `{}`)
-			if err := call(&Client{BaseURL: srv.URL, HTTP: srv.Client()}); err != nil {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var method, accept, ctype string
+			var bodyLen int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				b, _ := io.ReadAll(r.Body)
+				method, accept, ctype, bodyLen = r.Method, r.Header.Get("Accept"), r.Header.Get("Content-Type"), len(b)
+				w.Write([]byte(`{}`))
+			}))
+			defer srv.Close()
+			if err := tt.call(&Client{BaseURL: srv.URL, HTTP: srv.Client()}); err != nil {
 				t.Fatal(err)
+			}
+			if method != tt.method {
+				t.Errorf("method = %s, want %s", method, tt.method)
+			}
+			if accept != "application/json" {
+				t.Errorf("Accept = %q, want application/json", accept)
+			}
+			if tt.body {
+				if bodyLen == 0 || ctype != "application/json" {
+					t.Errorf("body len %d, Content-Type %q; want a body with application/json", bodyLen, ctype)
+				}
+			} else if bodyLen != 0 || ctype != "" {
+				t.Errorf("body len %d, Content-Type %q; want no body and no Content-Type", bodyLen, ctype)
 			}
 		})
 	}
@@ -199,5 +226,55 @@ func TestStatusError_ErrorText(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A refusal's {message, code} body can outrun the display cap; the command
+// layer parses StatusError.Body to print a friendly line, so the stored body
+// must stay whole (valid JSON) while only Error()'s text is capped.
+func TestStatusError_LongJSONBodyStaysParseable(t *testing.T) {
+	body := `{"code":"closed_show","message":"` + strings.Repeat("m", maxErrorBody+500) + `"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	_, err := c.patchRaw(context.Background(), "/flowsheet/shows/1", map[string]int{})
+	var se *StatusError
+	if !errors.As(err, &se) {
+		t.Fatalf("err = %v, want *StatusError", err)
+	}
+	if se.Body != body {
+		t.Errorf("Body len %d, want the whole %d-byte body", len(se.Body), len(body))
+	}
+	if want := "/flowsheet/shows/1: HTTP 403: " + body[:maxErrorBody]; se.Error() != want {
+		t.Errorf("Error() len %d, want capped text of len %d", len(se.Error()), len(want))
+	}
+}
+
+// An error response's unread tail must be drained so the keep-alive
+// connection goes back to the pool rather than being torn down.
+func TestClient_ErrorBodyIsDrainedForReuse(t *testing.T) {
+	var conns atomic.Int32
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte(strings.Repeat("x", maxErrorRead+64<<10)))
+	}))
+	srv.Config.ConnState = func(_ net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			conns.Add(1)
+		}
+	}
+	srv.Start()
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	for i := 0; i < 2; i++ {
+		if _, err := c.getRaw(context.Background(), "/x", nil); err == nil {
+			t.Fatal("err = nil, want a StatusError")
+		}
+	}
+	if n := conns.Load(); n != 1 {
+		t.Errorf("opened %d connections for 2 requests, want 1 (reused)", n)
 	}
 }

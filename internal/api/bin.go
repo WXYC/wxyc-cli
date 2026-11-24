@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 )
 
@@ -25,8 +26,7 @@ func (c *Client) Bin(ctx context.Context) ([]BinItem, []byte, error) {
 
 // BinAdd saves an album to the DJ's bin. Mutating: gated behind --write.
 func (c *Client) BinAdd(ctx context.Context, albumID int) error {
-	_, err := c.postRaw(ctx, "/djs/bin", map[string]int{"album_id": albumID})
-	return err
+	return c.doDiscard(ctx, http.MethodPost, "/djs/bin", map[string]int{"album_id": albumID})
 }
 
 // BinRemove removes an album from the DJ's bin and returns the deleted bins

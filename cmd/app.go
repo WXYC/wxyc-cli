@@ -2,10 +2,9 @@ package cmd
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"time"
-
-	"io"
 
 	"github.com/WXYC/wxyc-cli/internal/api"
 	"github.com/WXYC/wxyc-cli/internal/auth"

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/WXYC/wxyc-cli/internal/auth"
@@ -391,5 +392,25 @@ func TestFlowsheetOnAir(t *testing.T) {
 				t.Errorf("raw = %s, want the on_air object verbatim", raw)
 			}
 		})
+	}
+}
+
+// A write whose echo doesn't fit the typed struct must name the endpoint in
+// its decode error, like every read's "<path>: decoding response".
+func TestFlowsheetWrites_DecodeErrorNamesPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":"not-a-number"}`))
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	ctx := context.Background()
+
+	_, _, err := c.FlowsheetStart(ctx, StartShowRequest{})
+	if err == nil || !strings.Contains(err.Error(), "/flowsheet/join: decoding response: ") {
+		t.Errorf("FlowsheetStart() err = %v, want '/flowsheet/join: decoding response: ...'", err)
+	}
+	_, _, err = c.FlowsheetDelete(ctx, 1)
+	if err == nil || !strings.Contains(err.Error(), "/flowsheet: decoding response: ") {
+		t.Errorf("FlowsheetDelete() err = %v, want '/flowsheet: decoding response: ...'", err)
 	}
 }
