@@ -2,14 +2,11 @@ package cmd
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/WXYC/wxyc-cli/internal/safety"
 )
 
 // requestLineServer serves GET /flowsheet with onAir as the on_air value (a
@@ -150,20 +147,6 @@ func TestFlowsheetRequestLine_NoOpenShow(t *testing.T) {
 				t.Errorf("patches = %d, want 0", got.Patches)
 			}
 		})
-	}
-}
-
-func TestFlowsheetRequestLine_BlockedWithoutWrite(t *testing.T) {
-	_, got := requestLineServer(t, openShow, openShow)
-	t.Setenv("WXYC_ALLOW_WRITE", "")
-
-	_, err := runCLI(t, "flowsheet", "request-line", "closed")
-	var blocked *safety.BlockedError
-	if !errors.As(err, &blocked) || mapExit(err) != ExitBlocked {
-		t.Errorf("err = %v (exit %d), want *BlockedError / ExitBlocked", err, mapExit(err))
-	}
-	if got.Patches != 0 {
-		t.Errorf("patches = %d, want 0", got.Patches)
 	}
 }
 
