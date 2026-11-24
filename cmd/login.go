@@ -37,7 +37,7 @@ func newLoginCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := app.store.Save(app.cfg.Profile, token); err != nil {
+			if err := app.sessionStore().Save(app.cfg.Profile, token); err != nil {
 				return fmt.Errorf("saving session: %w", err)
 			}
 			fmt.Fprintf(app.stdout, "signed in as %s (profile %q)\n", ident, app.cfg.Profile)

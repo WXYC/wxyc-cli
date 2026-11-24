@@ -87,7 +87,8 @@ func TestBinRm_NotInBinIsExitNotFound(t *testing.T) {
 
 func TestBinRm_RejectsNonIntegerID(t *testing.T) {
 	t.Setenv("WXYC_JWT", "unused")
-	if _, err := runCLI(t, "bin", "rm", "abc", "--write"); err == nil {
-		t.Error("non-integer album_id accepted")
+	_, err := runCLI(t, "bin", "rm", "abc", "--write")
+	if err == nil || !strings.Contains(err.Error(), "album_id must be an integer") {
+		t.Errorf("err = %v, want album_id integer error", err)
 	}
 }

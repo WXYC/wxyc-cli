@@ -17,10 +17,18 @@ import (
 // populated by build() during the root command's PersistentPreRunE, so every
 // subcommand sees the same configured client, gate, and renderer.
 type App struct {
+	// getenv resolves environment variables. Execute passes os.Getenv; tests
+	// pass a hermetic lookup so the developer's shell can't leak in.
+	getenv func(string) string
+	// newStore constructs the session store. It is called lazily (see
+	// sessionStore) so that commands that never touch the store — anything
+	// run with WXYC_JWT — don't probe the OS keychain.
+	newStore func() auth.Store
+
 	cfg      config.Config
 	gate     safety.Gate
 	render   output.Renderer
-	store    auth.Store
+	store    auth.Store          // built on first use by sessionStore
 	provider *auth.TokenProvider // nil when a static WXYC_JWT is supplied
 	client   *api.Client
 	token    func(context.Context) (string, error) // resolves the current JWT
@@ -29,14 +37,14 @@ type App struct {
 }
 
 // build assembles the App from resolved flags and the environment.
-func (a *App) build(getenv func(string) string, profile string, jsonOut, allowWrite bool) {
+func (a *App) build(profile string, jsonOut, allowWrite bool) {
+	getenv := a.getenv
 	a.cfg = config.Resolve(getenv)
 	if profile != "" {
 		a.cfg.Profile = profile
 	}
 	a.gate = safety.Gate{AllowWrite: allowWrite || getenv("WXYC_ALLOW_WRITE") == "1"}
 	a.render = output.Renderer{JSON: jsonOut, Out: a.stdout}
-	a.store = auth.NewStore()
 
 	// Token source: a static WXYC_JWT (for agents/CI that manage their own
 	// tokens) short-circuits the session exchange; otherwise the provider
@@ -47,7 +55,7 @@ func (a *App) build(getenv func(string) string, profile string, jsonOut, allowWr
 		a.provider = &auth.TokenProvider{
 			AuthBase: a.cfg.AuthBase,
 			HTTP:     http.DefaultClient,
-			Session:  func() (string, error) { return a.store.Load(a.cfg.Profile) },
+			Session:  func() (string, error) { return a.sessionStore().Load(a.cfg.Profile) },
 			Skew:     30 * time.Second,
 		}
 		a.token = a.provider.Token
@@ -62,4 +70,14 @@ func (a *App) build(getenv func(string) string, profile string, jsonOut, allowWr
 		BaseURL: a.cfg.APIBase,
 		HTTP:    &http.Client{Transport: transport, Timeout: 35 * time.Second},
 	}
+}
+
+// sessionStore returns the session store, constructing it on first use. Only
+// login and the token provider need it, and neither runs when WXYC_JWT is set,
+// so a static-JWT invocation never probes the OS keychain.
+func (a *App) sessionStore() auth.Store {
+	if a.store == nil {
+		a.store = a.newStore()
+	}
+	return a.store
 }

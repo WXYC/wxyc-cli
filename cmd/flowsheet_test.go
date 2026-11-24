@@ -345,8 +345,9 @@ func TestFlowsheetShow_ListsEveryEntry(t *testing.T) {
 
 func TestFlowsheetShow_RejectsNonIntID(t *testing.T) {
 	t.Setenv("WXYC_JWT", "unused")
-	if _, err := runCLI(t, "flowsheet", "show", "abc"); err == nil {
-		t.Error("want error for non-integer show_id")
+	_, err := runCLI(t, "flowsheet", "show", "abc")
+	if err == nil || !strings.Contains(err.Error(), "show_id must be an integer") {
+		t.Errorf("err = %v, want show_id integer error", err)
 	}
 }
 

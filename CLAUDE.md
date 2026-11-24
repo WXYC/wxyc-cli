@@ -105,7 +105,13 @@ exchange, transport, session store). `internal/safety` (write gate) and
   HTTP-touching code (see `internal/api/*_test.go`,
   `internal/auth/transport_test.go`) and an in-memory `runCLI` helper in
   `cmd/root_test.go` that builds a fresh `App`/root command per test rather
-  than a shared global. Table-driven where useful but not forced.
+  than a shared global. `cmd` tests are hermetic: `TestMain` scrubs ambient
+  `WXYC_*` vars, `WXYC_API_URL` defaults to a trap server that fails the test
+  on any request, and the session store is a temp-dir `FileStore` (never the
+  OS keychain). Set only what a test needs with `t.Setenv`; use `runApp` with
+  `newTestApp` to override `getenv`/`newStore` directly. Bad-input tests must
+  assert the specific error text, not just `err != nil`. Table-driven where
+  useful but not forced.
 - **Red-green TDD, always** — including bug fixes. Write (or amend) the test
   first, run it, and confirm it *fails for the right reason* (red) before
   touching the code that makes it pass (green). Never write the fix first and

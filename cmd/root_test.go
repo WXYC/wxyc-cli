@@ -6,18 +6,65 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
 
+	"github.com/WXYC/wxyc-cli/internal/auth"
 	"github.com/WXYC/wxyc-cli/internal/safety"
 )
 
-// runCLI executes the command tree with args and returns stdout and the error.
+// TestMain scrubs every ambient WXYC_* variable so a developer's exported
+// WXYC_API_URL, WXYC_JWT, WXYC_ALLOW_WRITE, ... can never reach a test. Tests
+// set only what they need with t.Setenv.
+func TestMain(m *testing.M) {
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "WXYC_") {
+			os.Unsetenv(k)
+		}
+	}
+	os.Exit(m.Run())
+}
+
+// newTestApp returns an App wired for hermetic tests: env comes from the
+// (scrubbed) process env, WXYC_API_URL defaults to a trap server that fails
+// the test on any request, and the session store is a FileStore in a temp
+// dir, so nothing touches the network or the OS keychain unless a test
+// explicitly points it somewhere.
+func newTestApp(t *testing.T) *App {
+	t.Helper()
+	trap := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request to default API: %s %s", r.Method, r.URL)
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	t.Cleanup(trap.Close)
+	return &App{
+		getenv: func(k string) string {
+			if v := os.Getenv(k); v != "" {
+				return v
+			}
+			if k == "WXYC_API_URL" {
+				return trap.URL
+			}
+			return ""
+		},
+		newStore: func() auth.Store { return auth.FileStore{Dir: t.TempDir()} },
+	}
+}
+
+// runCLI executes the command tree with args on a fresh hermetic App and
+// returns stdout and the error.
 func runCLI(t *testing.T, args ...string) (string, error) {
 	t.Helper()
+	return runApp(t, newTestApp(t), args...)
+}
+
+// runApp executes the command tree against a caller-configured App.
+func runApp(t *testing.T, app *App, args ...string) (string, error) {
+	t.Helper()
 	var out, errbuf bytes.Buffer
-	app := &App{stdout: &out, stderr: &errbuf}
+	app.stdout, app.stderr = &out, &errbuf
 	root := newRoot(app)
 	root.SetArgs(args)
 	root.SetOut(&out)
@@ -26,9 +73,66 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
+// The command tree must resolve config through the App's injected getenv,
+// never the process environment directly.
+func TestApp_UsesInjectedEnvNotProcessEnv(t *testing.T) {
+	ambient := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("request reached the process-env API: %s %s", r.Method, r.URL)
+	}))
+	defer ambient.Close()
+	t.Setenv("WXYC_API_URL", ambient.URL)
+	t.Setenv("WXYC_JWT", "ambient")
+
+	var hits int32
+	injected := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Write([]byte(`[]`))
+	}))
+	defer injected.Close()
+	env := map[string]string{"WXYC_API_URL": injected.URL, "WXYC_JWT": "injected"}
+	app := newTestApp(t)
+	app.getenv = func(k string) string { return env[k] }
+
+	if _, err := runApp(t, app, "library", "search", "--artist", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if hits != 1 {
+		t.Errorf("injected API hit %d times, want 1", hits)
+	}
+}
+
+// With a static WXYC_JWT nothing needs the session store, so it must never
+// be constructed (constructing the real one probes the OS keychain).
+func TestApp_StaticJWTNeverConstructsStore(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+	app := newTestApp(t)
+	app.newStore = func() auth.Store {
+		t.Error("session store constructed despite WXYC_JWT")
+		return auth.FileStore{Dir: t.TempDir()}
+	}
+
+	if _, err := runApp(t, app, "library", "search", "--artist", "x"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Without WXYC_JWT, the provider loads the session from the injected store;
+// an empty one must surface as ErrNoSession (exit 3) before any request.
+func TestApp_SessionComesFromInjectedStore(t *testing.T) {
+	_, err := runCLI(t, "library", "search", "--artist", "x")
+	if !errors.Is(err, auth.ErrNoSession) {
+		t.Errorf("err = %v, want ErrNoSession from the empty temp store", err)
+	}
+}
+
 func TestWriteGate_BlocksMutatingCommandByDefault(t *testing.T) {
-	// A static JWT avoids the keyring/store and network for this path; the
-	// gate must reject before RunE, so no request is ever attempted.
+	// The gate must reject before RunE, so no request is ever attempted (the
+	// default trap API would fail the test if one were).
 	t.Setenv("WXYC_JWT", "unused")
 	t.Setenv("WXYC_ALLOW_WRITE", "")
 

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -135,7 +136,8 @@ func TestLibraryShow_NotFoundIsExitNotFound(t *testing.T) {
 
 func TestLibraryShow_RejectsNonIntegerID(t *testing.T) {
 	t.Setenv("WXYC_JWT", "unused")
-	if _, err := runCLI(t, "library", "show", "abc"); err == nil {
-		t.Error("non-integer album_id accepted")
+	_, err := runCLI(t, "library", "show", "abc")
+	if err == nil || !strings.Contains(err.Error(), "album_id must be an integer") {
+		t.Errorf("err = %v, want album_id integer error", err)
 	}
 }
