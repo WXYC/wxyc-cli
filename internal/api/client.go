@@ -114,6 +114,37 @@ func (c *Client) deleteRaw(ctx context.Context, path string, in any) ([]byte, er
 	return c.bodyRaw(ctx, http.MethodDelete, path, in)
 }
 
+// deleteQuery sends DELETE with query parameters and no body, for endpoints
+// that read their identifier from the query string (e.g. /djs/bin).
+func (c *Client) deleteQuery(ctx context.Context, path string, query map[string]string) error {
+	u := c.BaseURL + path
+	if len(query) > 0 {
+		vals := url.Values{}
+		for k, v := range query {
+			vals.Set(k, v)
+		}
+		u += "?" + vals.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	b, _ := io.ReadAll(res.Body)
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return &StatusError{Code: res.StatusCode, Path: path, Body: string(b)}
+	}
+	return nil
+}
+
 // bodyRaw is the shared implementation behind postRaw/patchRaw/deleteRaw: it
 // marshals in as JSON, sends it with the given method, and returns the response
 // body verbatim. Non-2xx becomes a StatusError.

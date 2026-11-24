@@ -65,3 +65,29 @@ func TestBin_Add_PropagatesForbidden(t *testing.T) {
 		t.Fatalf("BinAdd err = %v, want StatusError 403", err)
 	}
 }
+
+func TestBin_Remove_DeletesWithAlbumIDQuery(t *testing.T) {
+	var method, path, albumID string
+	var bodyLen int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.Path
+		albumID = r.URL.Query().Get("album_id")
+		bodyLen, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	if err := c.BinRemove(context.Background(), 45029); err != nil {
+		t.Fatal(err)
+	}
+	if method != http.MethodDelete || path != "/djs/bin" {
+		t.Errorf("got %s %s, want DELETE /djs/bin", method, path)
+	}
+	if albumID != "45029" {
+		t.Errorf("album_id = %q, want 45029 in the query string", albumID)
+	}
+	if bodyLen != 0 {
+		t.Errorf("body length = %d, want no body", bodyLen)
+	}
+}

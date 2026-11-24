@@ -10,7 +10,7 @@ import (
 
 func newBinCmd(app *App) *cobra.Command {
 	bin := &cobra.Command{Use: "bin", Short: "The DJ mail bin"}
-	bin.AddCommand(newBinListCmd(app), newBinAddCmd(app))
+	bin.AddCommand(newBinListCmd(app), newBinAddCmd(app), newBinRemoveCmd(app))
 	return bin
 }
 
@@ -45,6 +45,27 @@ func newBinAddCmd(app *App) *cobra.Command {
 				return err
 			}
 			fmt.Fprintf(app.stdout, "added album %d to bin\n", id)
+			return nil
+		},
+	}
+}
+
+func newBinRemoveCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "rm <album_id>",
+		Short: "Remove an album from your bin",
+		Args:  cobra.ExactArgs(1),
+		// Mutating: the root PersistentPreRunE blocks this unless writes are unlocked.
+		Annotations: map[string]string{annMutates: "true", annOp: "bin:rm"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("album_id must be an integer: %q", args[0])
+			}
+			if err := app.client.BinRemove(cmd.Context(), id); err != nil {
+				return err
+			}
+			fmt.Fprintf(app.stdout, "removed album %d from bin\n", id)
 			return nil
 		},
 	}
