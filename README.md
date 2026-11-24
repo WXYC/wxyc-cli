@@ -72,10 +72,11 @@ Commands marked **[write]** mutate station state and require `--write` (or
 |---------|-------------|
 | `wxyc flowsheet tail [-n <limit>]` | Show the most recent entries (default 10). |
 | `wxyc flowsheet show <show_id>` | Show every entry of one past or current show, in play order. Show ids come from `djs playlists`. |
-| `wxyc flowsheet start [--name <s>] [--as <s>] [--specialty <id>]` | **[write]** Start your show, or join the active show as co-host. |
+| `wxyc flowsheet start [--name <s>] [--as <s>] [--specialty <slug>]` | **[write]** Start your show, or join the active show as co-host. `--specialty` takes a specialty show's slug (e.g. `new-science-experience`); a numeric id is still accepted. |
 | `wxyc flowsheet add --track <t> [--artist <a>] [--album <a>] [--label <l>] [--album-id <id>] [--rotation-id <id>] [--segue] [--request]` | **[write]** Add a played track. `--track` is required; `--artist`/`--album` are required unless `--album-id` is given (the server backfills from it). |
 | `wxyc flowsheet talkset` | **[write]** Log a talkset. |
 | `wxyc flowsheet breakpoint` | **[write]** Log a breakpoint (top of hour). |
+| `wxyc flowsheet spotlight --role <role> <name>` | **[write]** Record who is on air in the open show. `--role` is one of `performer`, `dj`, `reader`, `guest`, `host`; the name is 1 to 128 characters. The name is public: it shows in the listener apps, on the Lock Screen and in the public playlist archive, so a `dj` entry takes the name the DJ uses on air. |
 | `wxyc flowsheet move <entry_id> <new_position>` | **[write]** Reorder an entry to a new 1-based position. |
 | `wxyc flowsheet edit <entry_id> [field flags…]` | **[write]** Edit fields of an entry. Accepts the same field flags as `add` plus `--message` (for marker rows); only flags you pass are changed, and `--flag ""` clears a field. |
 | `wxyc flowsheet rm <entry_id>` | **[write]** Remove an entry. |

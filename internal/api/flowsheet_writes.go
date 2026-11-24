@@ -35,6 +35,14 @@ func (c *Client) FlowsheetAddMarker(ctx context.Context, message, entryType stri
 	return decodeFlowsheetResult(c.postRaw(ctx, "/flowsheet", flowsheetMarker{Message: message, EntryType: entryType}))
 }
 
+// FlowsheetAddSpotlight records who is on air in the open show (role is one of
+// performer, dj, reader, guest, host). Mutating: gated behind --write. The
+// server 403s with code spotlight_disabled while the feature flag is off.
+func (c *Client) FlowsheetAddSpotlight(ctx context.Context, role, name string) (FlowsheetResult, []byte, error) {
+	req := flowsheetSpotlight{EntryType: "spotlight", SpotlightRole: role, SpotlightName: name}
+	return decodeFlowsheetResult(c.postRaw(ctx, "/flowsheet", req))
+}
+
 // FlowsheetMove reorders an entry to a new 1-based position. Mutating: gated
 // behind --write. 404s if the target row is gone.
 func (c *Client) FlowsheetMove(ctx context.Context, entryID, newPosition int) (FlowsheetResult, []byte, error) {

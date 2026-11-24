@@ -384,3 +384,133 @@ func TestFlowsheetShow_TableIsInPlayOrder(t *testing.T) {
 		t.Errorf("table not in play order (start=%d track=%d end=%d):\n%s", start, track, end, out)
 	}
 }
+
+func TestFlowsheetSpotlight_PostsEachRole(t *testing.T) {
+	for _, role := range []string{"performer", "dj", "reader", "guest", "host"} {
+		t.Run(role, func(t *testing.T) {
+			srv, got := captureFlowsheetServer(t, `{"id":12,"entry_type":"spotlight","message":"In the studio: Weirs"}`)
+			t.Setenv("WXYC_API_URL", srv.URL)
+			t.Setenv("WXYC_JWT", "unused")
+
+			out, err := runCLI(t, "flowsheet", "spotlight", "--role", role, "  The", "Weirs  ", "--write")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Method != http.MethodPost || got.Path != "/flowsheet" {
+				t.Errorf("request = %s %s, want POST /flowsheet", got.Method, got.Path)
+			}
+			want := map[string]any{"entry_type": "spotlight", "spotlight_role": role, "spotlight_name": "The Weirs"}
+			if len(got.Body) != len(want) {
+				t.Errorf("body = %v, want exactly %v", got.Body, want)
+			}
+			for k, v := range want {
+				if got.Body[k] != v {
+					t.Errorf("body[%q] = %v, want %v", k, got.Body[k], v)
+				}
+			}
+			if !strings.Contains(out, "12") || !strings.Contains(out, "In the studio: Weirs") {
+				t.Errorf("confirmation missing entry:\n%s", out)
+			}
+		})
+	}
+}
+
+func TestFlowsheetSpotlight_RefusesBadInputBeforeRequest(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"unknown role", []string{"--role", "drummer", "Weirs"}, "performer, dj, reader, guest, host"},
+		{"missing role", []string{"Weirs"}, "performer, dj, reader, guest, host"},
+		{"empty name", []string{"--role", "guest", "   "}, "1 to 128 characters"},
+		{"no name", []string{"--role", "guest"}, "1 to 128 characters"},
+		{"129-character name", []string{"--role", "guest", strings.Repeat("é", 129)}, "1 to 128 characters"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var hits int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++ }))
+			t.Cleanup(srv.Close)
+			t.Setenv("WXYC_API_URL", srv.URL)
+			t.Setenv("WXYC_JWT", "unused")
+
+			_, err := runCLI(t, append([]string{"flowsheet", "spotlight", "--write"}, tc.args...)...)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want mention of %q", err, tc.want)
+			}
+			if hits != 0 {
+				t.Errorf("server hit %d times, want 0", hits)
+			}
+		})
+	}
+}
+
+func TestFlowsheetSpotlight_AcceptsA128CharacterName(t *testing.T) {
+	srv, got := captureFlowsheetServer(t, `{"id":1,"entry_type":"spotlight"}`)
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	name := strings.Repeat("é", 128) // 128 runes, 256 bytes: the server counts code points
+	if _, err := runCLI(t, "flowsheet", "spotlight", "--role", "guest", name, "--write"); err != nil {
+		t.Fatal(err)
+	}
+	if got.Body["spotlight_name"] != name {
+		t.Errorf("spotlight_name = %v, want the 128-character name", got.Body["spotlight_name"])
+	}
+}
+
+func TestFlowsheetSpotlight_ServerRefusals(t *testing.T) {
+	cases := []struct {
+		name     string
+		status   int
+		body     string
+		wantMsg  string
+		wantExit int
+	}{
+		{"flag off", http.StatusForbidden,
+			`{"message":"Spotlight entries are not enabled","code":"spotlight_disabled"}`,
+			"who's on air is not turned on yet", ExitForbidden},
+		{"validation", http.StatusBadRequest,
+			`{"message":"Bad Request, a spotlight entry has no track fields"}`,
+			"Bad Request, a spotlight entry has no track fields", ExitError},
+		{"not on the show", http.StatusBadRequest,
+			`{"message":"Bad Request: DJ not a member of show"}`,
+			"you are not on the open show", ExitError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			t.Cleanup(srv.Close)
+			t.Setenv("WXYC_API_URL", srv.URL)
+			t.Setenv("WXYC_JWT", "unused")
+
+			_, err := runCLI(t, "flowsheet", "spotlight", "--role", "guest", "Weirs", "--write")
+			if err == nil {
+				t.Fatal("err = nil, want a refusal")
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, tc.wantMsg) || strings.Contains(msg, "\n") || strings.Contains(msg, "{") {
+				t.Errorf("err = %q, want one line containing %q and no raw JSON", msg, tc.wantMsg)
+			}
+			if got := mapExit(err); got != tc.wantExit {
+				t.Errorf("exit = %d, want %d", got, tc.wantExit)
+			}
+		})
+	}
+}
+
+func TestFlowsheetSpotlight_HelpSaysNameIsPublic(t *testing.T) {
+	out, err := runCLI(t, "flowsheet", "spotlight", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"public", "Lock Screen", "archive", "on air"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help missing %q:\n%s", want, out)
+		}
+	}
+}

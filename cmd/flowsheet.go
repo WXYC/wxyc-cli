@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/WXYC/wxyc-cli/internal/api"
 	"github.com/spf13/cobra"
@@ -19,6 +23,7 @@ func newFlowsheetCmd(app *App) *cobra.Command {
 		newFlowsheetAddCmd(app),
 		newFlowsheetMarkerCmd(app, "talkset", "Log a talkset", "Talkset", "talkset"),
 		newFlowsheetMarkerCmd(app, "breakpoint", "Log a breakpoint (top of hour)", "Breakpoint", "breakpoint"),
+		newFlowsheetSpotlightCmd(app),
 		newFlowsheetMoveCmd(app),
 		newFlowsheetEditCmd(app),
 		newFlowsheetRmCmd(app),
@@ -156,6 +161,80 @@ func newFlowsheetMarkerCmd(app *App, use, short, message, entryType string) *cob
 		},
 	}
 }
+
+// spotlightRoles is the server's closed set of who's-on-air roles.
+var spotlightRoles = []string{"performer", "dj", "reader", "guest", "host"}
+
+const spotlightNameMax = 128 // characters (code points), as the server counts them
+
+func newFlowsheetSpotlightCmd(app *App) *cobra.Command {
+	var role string
+	cmd := &cobra.Command{
+		Use:   "spotlight --role <role> <name>",
+		Short: "Record who is on air in the open show",
+		Long: `Record who is on air in the open show: a band playing live, a reader, a
+guest DJ mixing, a studio guest, or the host taking the focus back.
+
+--role is one of: ` + strings.Join(spotlightRoles, ", ") + `.
+The name is the remaining arguments, trimmed, 1 to 128 characters.
+
+The name is public once entered: it shows in the listener apps, on the
+Lock Screen and in the public playlist archive. For a dj entry, use the
+name the DJ uses on air, never a real name.`,
+		Example: `  wxyc flowsheet spotlight --role performer The Weirs --write`,
+		// Mutating: the root PersistentPreRunE blocks this unless writes are unlocked.
+		Annotations: map[string]string{annMutates: "true", annOp: "flowsheet:spotlight"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !slices.Contains(spotlightRoles, role) {
+				return fmt.Errorf("--role must be one of: %s", strings.Join(spotlightRoles, ", "))
+			}
+			name := strings.TrimSpace(strings.Join(args, " "))
+			if n := utf8.RuneCountInString(name); n < 1 || n > spotlightNameMax {
+				return fmt.Errorf("name must be 1 to %d characters, got %d", spotlightNameMax, n)
+			}
+			e, raw, err := app.client.FlowsheetAddSpotlight(cmd.Context(), role, name)
+			if err != nil {
+				return spotlightError(err)
+			}
+			return app.render.EmitRaw(raw, entryHeaders, entryResultRows(e))
+		},
+	}
+	cmd.Flags().StringVar(&role, "role", "", "who is on air: "+strings.Join(spotlightRoles, ", "))
+	return cmd
+}
+
+// spotlightError turns the server's refusals into one readable line while
+// keeping the *api.StatusError in the chain, so mapExit still classifies it.
+func spotlightError(err error) error {
+	var se *api.StatusError
+	if !errors.As(err, &se) {
+		return err
+	}
+	var body struct {
+		Message string `json:"message"`
+		Code    string `json:"code"`
+	}
+	_ = json.Unmarshal([]byte(se.Body), &body)
+	switch {
+	case se.Code == http.StatusForbidden && body.Code == "spotlight_disabled":
+		return &oneLineError{msg: "who's on air is not turned on yet", err: err}
+	case se.Code == http.StatusBadRequest && strings.Contains(body.Message, "not a member of show"):
+		return &oneLineError{msg: "you are not on the open show; run `wxyc flowsheet start` to join it", err: err}
+	case se.Code == http.StatusBadRequest && body.Message != "":
+		return &oneLineError{msg: body.Message, err: err}
+	}
+	return err
+}
+
+// oneLineError replaces a wrapped error's text with a short message but still
+// unwraps to it, so errors.As (and so the exit code) sees the original.
+type oneLineError struct {
+	msg string
+	err error
+}
+
+func (e *oneLineError) Error() string { return e.msg }
+func (e *oneLineError) Unwrap() error { return e.err }
 
 func newFlowsheetMoveCmd(app *App) *cobra.Command {
 	return &cobra.Command{

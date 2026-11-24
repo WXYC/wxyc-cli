@@ -91,6 +91,15 @@ type flowsheetMarker struct {
 	EntryType string `json:"entry_type,omitempty"`
 }
 
+// flowsheetSpotlight is the POST /flowsheet body for a who's-on-air entry. It
+// carries no track fields (the server refuses one that does) and no message:
+// the server composes that from the role and name.
+type flowsheetSpotlight struct {
+	EntryType     string `json:"entry_type"`
+	SpotlightRole string `json:"spotlight_role"`
+	SpotlightName string `json:"spotlight_name"`
+}
+
 // ShowSession is the response to POST /flowsheet/join and /flowsheet/end.
 // Starting or ending a show echoes the show row (ID set); joining or leaving as
 // a co-host echoes the show_djs row (ShowID set) instead. EffectiveShowID
