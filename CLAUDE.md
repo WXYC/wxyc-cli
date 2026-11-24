@@ -60,15 +60,15 @@ exchange, transport, session store). `internal/safety` (write gate) and
   a typed struct for the table view, while `getRaw` returns the response body
   verbatim for `--json` passthrough — the same request backs both, so the two
   views can't drift and no server field is ever silently dropped. Every
-  request — `getRaw`, `deleteQueryRaw`, and the JSON-body `postRaw`/
-  `patchRaw`/`deleteRaw` — is a one-liner over `do`, which reads and validates the
-  reply body. Every request goes through a single `send`, which sets the
-  JSON headers and turns non-2xx into `StatusError{Code, Path, Body}`.
-  `Body` keeps up to `maxErrorRead` (1 MiB) so a JSON refusal stays
-  parseable; only `Error()`'s text is capped at `maxErrorBody`. Typed writes
-  use `writeJSON[T]`, whose decode errors name the path. Writes that report
-  nothing from the reply (`BinAdd`) use `doDiscard`, so a garbled 2xx body
-  can't turn a write that landed into a failure that a script would retry.
+  request goes through a single `send`, which sets the JSON headers and turns
+  non-2xx into `StatusError{Code, Path, Body}`. On top of it, `do` reads and
+  validates the reply body (backing `getRaw`, `deleteQueryRaw`, `patchRaw`,
+  and `writeJSON[T]`, the typed writes, whose decode errors name the path),
+  and `doDiscard` drains and drops it for writes that report nothing from the
+  reply (`BinAdd`), so a garbled 2xx body can't turn a write that landed into
+  a failure that a script would retry. `Body` keeps up to `maxErrorRead`
+  (1 MiB) so a JSON refusal stays parseable; only `Error()`'s text is capped
+  at `maxErrorBody`.
 - **`internal/auth`** — `Store` (interface) persists only a long-lived
   *session* token, never the password: `KeyringStore` (OS keychain) with
   `FileStore` (0600 file) fallback when no keychain is usable
