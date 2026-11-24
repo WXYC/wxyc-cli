@@ -109,6 +109,9 @@ exchange, transport, session store). `internal/safety` (write gate) and
   build a headers/rows projection and call `app.render.EmitRaw(raw, headers,
   rows)`. Never hand-model a field only for the table and skip it in
   `--json` — the raw bytes must always carry the full server response.
+  A command that joins several server bodies into one `--json` value builds
+  it with `combineRaw` (`cmd/rawjson.go`), never `json.Marshal`, which would
+  rewrite `&`, `<` and `>` in the server's text as `&` etc.
 - **Mutating commands**: set both `annMutates`/`annOp` annotations, gate it
   with `--write`/`WXYC_ALLOW_WRITE=1` (already enforced centrally — don't
   re-check the gate inside `RunE`), and return a `StatusError`-compatible

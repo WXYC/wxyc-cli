@@ -547,30 +547,26 @@ func TestReviewsList_WhitespaceTextShowsMedium(t *testing.T) {
 	}
 }
 
-// A review's "&", "<" and ">" must reach --json as the server sent them, not
-// as \u0026, \u003c and \u003e.
-const htmlReviewText = `Simon & Garfunkel <3 > the rest`
-
 func TestReviewsShow_RevisionsJSONKeepsHTMLCharacters(t *testing.T) {
-	r := strings.Replace(reviewOne, `"fcc":"Track 4 has one f-word at 2:10."`, `"fcc":"`+htmlReviewText+`"`, 1)
+	r := strings.Replace(reviewOne, `"fcc":"Track 4 has one f-word at 2:10."`, `"fcc":"`+htmlText+`"`, 1)
 	reviewsServer(t, map[string]string{"/reviews/812": r, "/reviews/812/revisions": reviewRevisions}, 0)
 	out, err := runCLI(t, "reviews", "show", "812", "--revisions", "--json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, htmlReviewText) {
-		t.Errorf("--json altered %q:\n%s", htmlReviewText, out)
+	if !strings.Contains(out, htmlText) {
+		t.Errorf("--json altered %q:\n%s", htmlText, out)
 	}
 }
 
 func TestReviewsFor_JSONKeepsHTMLCharacters(t *testing.T) {
-	p := strings.Replace(albumReviewsPage, "Great late-night record.", htmlReviewText, 1)
+	p := strings.Replace(albumReviewsPage, "Great late-night record.", htmlText, 1)
 	reviewsServer(t, map[string]string{"/reviews": "[]", "/album-reviews": p}, 0)
 	out, err := runCLI(t, "reviews", "for", "45029", "--json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, htmlReviewText) {
-		t.Errorf("--json altered %q:\n%s", htmlReviewText, out)
+	if !strings.Contains(out, htmlText) {
+		t.Errorf("--json altered %q:\n%s", htmlText, out)
 	}
 }

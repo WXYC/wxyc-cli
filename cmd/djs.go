@@ -65,7 +65,7 @@ func emitFullPlaylists(cmd *cobra.Command, app *App, playlists []api.Playlist) e
 			rows = append(rows, []string{date, strconv.Itoa(p.Show), e.ArtistName, e.TrackTitle, e.AlbumTitle})
 		}
 	}
-	combined, err := json.Marshal(bodies)
+	combined, err := combineRaw(bodies)
 	if err != nil {
 		return err
 	}

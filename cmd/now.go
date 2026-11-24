@@ -40,7 +40,7 @@ automation, and "unknown" when the server does not report it.
 			if err != nil {
 				return err
 			}
-			combined, err := json.Marshal(map[string]json.RawMessage{"flowsheet": pageRaw, "djs_on_air": djsRaw})
+			combined, err := combineRaw(map[string]json.RawMessage{"flowsheet": pageRaw, "djs_on_air": djsRaw})
 			if err != nil {
 				return err
 			}

@@ -177,3 +177,14 @@ func compactJSON(t *testing.T, b []byte) string {
 	out, _ := json.Marshal(v)
 	return string(out)
 }
+
+func TestFlowsheetNow_JSONKeepsHTMLCharacters(t *testing.T) {
+	nowServer(t, nowLive, strings.Replace(nowLiveDJs, "DJ Lark", htmlText, 1))
+	out, err := runCLI(t, "--json", "flowsheet", "now")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, htmlText) {
+		t.Errorf("--json altered %q:\n%s", htmlText, out)
+	}
+}

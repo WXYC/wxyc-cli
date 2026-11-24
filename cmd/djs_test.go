@@ -156,3 +156,20 @@ func TestPlaylistsFull_MissingShowFails(t *testing.T) {
 		t.Error("want an error when a listed show 404s")
 	}
 }
+
+func TestPlaylistsFull_JSONKeepsHTMLCharacters(t *testing.T) {
+	playlists := `[{"show":42,"date":"2026-10-16T15:59:19.052Z","preview":[]}]`
+	show := strings.Replace(showFull42, `"track_title":"White Fang"`, `"track_title":"`+htmlText+`"`, 1)
+	srv, _ := showServer(t, playlists, map[string]string{"42": show})
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	out, err := runCLI(t, "--json", "djs", "playlists", "abc", "--full")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, htmlText) {
+		t.Errorf("--json altered %q:\n%s", htmlText, out)
+	}
+}

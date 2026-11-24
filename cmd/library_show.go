@@ -38,7 +38,7 @@ summed, so no total is shown.
 			if err != nil {
 				return err
 			}
-			combined, err := json.Marshal(map[string]json.RawMessage{"album": albumRaw, "play_counts": countsRaw})
+			combined, err := combineRaw(map[string]json.RawMessage{"album": albumRaw, "play_counts": countsRaw})
 			if err != nil {
 				return err
 			}

@@ -141,3 +141,14 @@ func TestLibraryShow_RejectsNonIntegerID(t *testing.T) {
 		t.Errorf("err = %v, want album_id integer error", err)
 	}
 }
+
+func TestLibraryShow_JSONKeepsHTMLCharacters(t *testing.T) {
+	libraryShowServer(t, strings.Replace(showAlbumInfo, `"album_title":"Dots and Loops"`, `"album_title":"`+htmlText+`"`, 1), showPlayCounts, 0)
+	out, err := runCLI(t, "library", "show", "45029", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, htmlText) {
+		t.Errorf("--json altered %q:\n%s", htmlText, out)
+	}
+}
