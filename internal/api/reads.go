@@ -29,6 +29,13 @@ func (c *Client) Labels(ctx context.Context) ([]Label, []byte, error) {
 	return l, raw, err
 }
 
+// Label returns one label with its reference counts. A missing label is a 404.
+func (c *Client) Label(ctx context.Context, id int) (LabelDetail, []byte, error) {
+	var l LabelDetail
+	raw, err := c.getInto(ctx, "/labels/"+strconv.Itoa(id), nil, &l)
+	return l, raw, err
+}
+
 // LabelSearch finds labels matching q.
 func (c *Client) LabelSearch(ctx context.Context, q string, limit int) ([]Label, []byte, error) {
 	params := map[string]string{"q": q}

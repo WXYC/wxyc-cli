@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/WXYC/wxyc-cli/internal/api"
@@ -9,7 +10,7 @@ import (
 
 func newLabelsCmd(app *App) *cobra.Command {
 	labels := &cobra.Command{Use: "labels", Short: "Query record labels"}
-	labels.AddCommand(newLabelsListCmd(app), newLabelsSearchCmd(app))
+	labels.AddCommand(newLabelsListCmd(app), newLabelsSearchCmd(app), newLabelsShowCmd(app))
 	return labels
 }
 
@@ -44,6 +45,41 @@ func newLabelsSearchCmd(app *App) *cobra.Command {
 	}
 	cmd.Flags().IntVarP(&limit, "limit", "n", 10, "max results")
 	return cmd
+}
+
+func newLabelsShowCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <id>",
+		Short: "Show a label with its reference counts",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("id must be an integer: %q", args[0])
+			}
+			label, raw, err := app.client.Label(cmd.Context(), id)
+			if err != nil {
+				return err
+			}
+			parent := "-"
+			if label.ParentLabelID != nil {
+				parent = strconv.Itoa(*label.ParentLabelID)
+			}
+			row := []string{
+				strconv.Itoa(label.ID),
+				label.LabelName,
+				parent,
+				strconv.Itoa(label.References.Library),
+				strconv.Itoa(label.References.Rotation),
+				strconv.Itoa(label.References.Flowsheet),
+				strconv.Itoa(label.References.IntakeItems),
+				strconv.Itoa(label.ChildLabels),
+			}
+			return app.render.EmitRaw(raw,
+				[]string{"ID", "LABEL", "PARENT", "LIBRARY", "ROTATION", "FLOWSHEET", "INTAKE", "CHILDREN"},
+				[][]string{row})
+		},
+	}
 }
 
 func labelRows(labels []api.Label) [][]string {

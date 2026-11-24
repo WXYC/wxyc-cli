@@ -201,6 +201,24 @@ type Label struct {
 	ParentLabelID *int   `json:"parent_label_id"`
 }
 
+// LabelReferences counts the rows that point at a label, by source.
+type LabelReferences struct {
+	Library     int `json:"library"`
+	Rotation    int `json:"rotation"`
+	Flowsheet   int `json:"flowsheet"`
+	IntakeItems int `json:"intake_items"`
+}
+
+// LabelDetail is one label with its reference and child counts, as returned by
+// GET /labels/{id}.
+type LabelDetail struct {
+	ID            int             `json:"id"`
+	LabelName     string          `json:"label_name"`
+	ParentLabelID *int            `json:"parent_label_id"`
+	References    LabelReferences `json:"references"`
+	ChildLabels   int             `json:"child_labels"`
+}
+
 // Playlist is one past show a DJ was on, as returned by /djs/playlists. The
 // server caps Preview at the show's first few flowsheet entries (in play order,
 // message rows excluded); fetch the full track list with Client.Show.
