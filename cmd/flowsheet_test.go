@@ -643,3 +643,33 @@ func TestFlowsheetShow_JSONHasNoHeader(t *testing.T) {
 		t.Fatalf("--json output is not pure JSON: %v\n%s", err, out)
 	}
 }
+
+// A negative id is never a real catalog or rotation id. It must be refused
+// up front rather than dropped, which would send --album-id -1 without the
+// artist/album the server then demands (a 400). The trap server fails the
+// test if anything is sent.
+func TestFlowsheetAdd_RejectsNegativeIDs(t *testing.T) {
+	t.Setenv("WXYC_JWT", "unused")
+	for _, tc := range []struct{ flag, want string }{
+		{"--album-id", "--album-id must be a positive id, got -1"},
+		{"--rotation-id", "--rotation-id must be a positive id, got -1"},
+	} {
+		_, err := runCLI(t, "flowsheet", "add", "--track", "T", "--artist", "A", "--album", "B",
+			tc.flag, "-1", "--write")
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s -1: err = %v, want %q", tc.flag, err, tc.want)
+		}
+	}
+}
+
+// -n below 1 would otherwise be passed along and silently replaced by the
+// server's default; refuse it instead, sending nothing.
+func TestFlowsheetTail_RejectsLimitBelowOne(t *testing.T) {
+	t.Setenv("WXYC_JWT", "unused")
+	for _, n := range []string{"0", "-5"} {
+		_, err := runCLI(t, "flowsheet", "tail", "-n", n)
+		if want := "--limit must be at least 1, got " + n; err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("-n %s: err = %v, want %q", n, err, want)
+		}
+	}
+}

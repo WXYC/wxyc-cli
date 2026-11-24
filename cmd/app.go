@@ -40,6 +40,11 @@ type App struct {
 	// without echo. Execute wires them to the terminal; tests inject fakes.
 	stdin        io.Reader
 	readPassword func(context.Context) ([]byte, error)
+	// loc and now are the local zone and clock that bare dates, zoneless
+	// times and today/yesterday/now resolve against. Execute wires the
+	// system's; tests pin them per App.
+	loc *time.Location
+	now func() time.Time
 }
 
 // defaultAuthTimeout bounds a token exchange. Commands like whoami fetch a

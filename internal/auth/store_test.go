@@ -2,8 +2,11 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/zalando/go-keyring"
@@ -96,5 +99,51 @@ func TestDefaultFileStoreDir(t *testing.T) {
 	}
 	if filepath.Base(dir) != "wxyc-cli" {
 		t.Errorf("dir = %q, want .../wxyc-cli", dir)
+	}
+}
+
+// A profile name is a file name inside Dir, never a path: one that could
+// escape Dir must be refused by every operation, and nothing written.
+func TestFileStore_RejectsPathProfiles(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "store")
+	s := FileStore{Dir: dir}
+	for _, p := range []string{"../x", "../../x", "a/b", "..", "", `a\b`, "x..y"} {
+		want := fmt.Sprintf("invalid profile name %q", p)
+		if err := s.Save(p, "tok"); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Save(%q) = %v, want %q", p, err, want)
+		}
+		if _, err := s.Load(p); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Load(%q) = %v, want %q", p, err, want)
+		}
+		if err := s.Clear(p); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Clear(%q) = %v, want %q", p, err, want)
+		}
+	}
+	if m, _ := filepath.Glob(filepath.Join(root, "*.token")); len(m) != 0 {
+		t.Errorf("token written outside the store: %v", m)
+	}
+}
+
+// os.WriteFile keeps an existing file's mode, so a token file left 0644 by
+// something else must be tightened to 0600 when a session is saved over it.
+func TestFileStore_TightensExistingFilePerms(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dj.token")
+	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil { // defeat the umask
+		t.Fatal(err)
+	}
+	if err := (FileStore{Dir: dir}).Save("dj", "secret"); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := fi.Mode().Perm(); perm != 0o600 {
+		t.Errorf("token file perms = %o, want 600", perm)
 	}
 }

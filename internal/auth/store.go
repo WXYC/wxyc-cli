@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,19 +62,55 @@ type FileStore struct {
 	Dir string
 }
 
-func (f FileStore) path(profile string) string {
-	return filepath.Join(f.Dir, profile+".token")
+// ValidateProfile refuses a profile name that isn't a plain file name. The
+// file store keeps a profile's token at Dir/<profile>.token, so a name with a
+// separator or ".." could reach outside Dir; it is refused, never cleaned.
+func ValidateProfile(profile string) error {
+	if profile == "" || strings.ContainsAny(profile, `/\`) || strings.Contains(profile, "..") {
+		return fmt.Errorf("invalid profile name %q: it can't be empty or contain a slash, backslash or \"..\"", profile)
+	}
+	return nil
+}
+
+// path is the profile's token file, inside Dir.
+func (f FileStore) path(profile string) (string, error) {
+	if err := ValidateProfile(profile); err != nil {
+		return "", err
+	}
+	return filepath.Join(f.Dir, profile+".token"), nil
 }
 
 func (f FileStore) Save(profile, token string) error {
+	p, err := f.path(profile)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(f.Dir, 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(f.path(profile), []byte(token), 0o600)
+	file, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	// The create mode only applies to a new file, so tighten an existing one
+	// left looser before the token goes into it.
+	if err := file.Chmod(0o600); err != nil {
+		file.Close()
+		return err
+	}
+	if _, err := file.WriteString(token); err != nil {
+		file.Close()
+		return err
+	}
+	return file.Close()
 }
 
 func (f FileStore) Load(profile string) (string, error) {
-	b, err := os.ReadFile(f.path(profile))
+	p, err := f.path(profile)
+	if err != nil {
+		return "", err
+	}
+	b, err := os.ReadFile(p)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", ErrNoSession
 	}
@@ -84,7 +121,11 @@ func (f FileStore) Load(profile string) (string, error) {
 }
 
 func (f FileStore) Clear(profile string) error {
-	err := os.Remove(f.path(profile))
+	p, err := f.path(profile)
+	if err != nil {
+		return err
+	}
+	err = os.Remove(p)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}

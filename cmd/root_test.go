@@ -59,6 +59,8 @@ func newTestApp(t *testing.T) *App {
 			t.Error("unexpected password prompt")
 			return nil, errors.New("no password in tests")
 		},
+		loc: time.Local,
+		now: time.Now,
 	}
 }
 
@@ -457,5 +459,25 @@ func TestApp_RequestTimeoutExcludesTokenExchange(t *testing.T) {
 	}
 	if tr.AttemptTimeout != defaultRequestTimeout || defaultRequestTimeout != 30*time.Second {
 		t.Errorf("AttemptTimeout = %v, want 30s", tr.AttemptTimeout)
+	}
+}
+
+// A profile name that could escape the token store's directory is refused
+// before any command runs, so login can't send a password it then can't
+// save, and a read never reaches the server.
+func TestRoot_RejectsPathProfile(t *testing.T) {
+	t.Setenv("WXYC_JWT", "unused")
+	for _, args := range [][]string{
+		{"--profile", "../../x", "flowsheet", "tail"},
+		{"--profile", "../../x", "login"},
+	} {
+		_, err := runCLI(t, args...)
+		if want := `invalid profile name "../../x"`; err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%v: err = %v, want %q", args, err, want)
+		}
+	}
+	t.Setenv("WXYC_PROFILE", "a/b")
+	if _, err := runCLI(t, "flowsheet", "tail"); err == nil || !strings.Contains(err.Error(), `invalid profile name "a/b"`) {
+		t.Errorf("WXYC_PROFILE=a/b: err = %v, want an invalid profile error", err)
 	}
 }

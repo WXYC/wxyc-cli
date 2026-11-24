@@ -111,6 +111,14 @@ func newFlowsheetAddCmd(app *App) *cobra.Command {
 			if track == "" {
 				return fmt.Errorf("--track is required")
 			}
+			// 0 means unset; a negative id is never real, and dropping it
+			// would send the track without the fields the id stands in for.
+			if albumID < 0 {
+				return fmt.Errorf("--album-id must be a positive id, got %d", albumID)
+			}
+			if rotationID < 0 {
+				return fmt.Errorf("--rotation-id must be a positive id, got %d", rotationID)
+			}
 			// With --album-id the server backfills artist/album/label; without
 			// it those fields are required, so fail fast rather than 400.
 			if albumID == 0 && (artist == "" || album == "") {
@@ -472,6 +480,9 @@ func newFlowsheetTailCmd(app *App) *cobra.Command {
 		Short: "Show the most recent flowsheet entries",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if n < 1 {
+				return fmt.Errorf("--limit must be at least 1, got %d", n)
+			}
 			entries, raw, err := app.client.Flowsheet(cmd.Context(), n)
 			if err != nil {
 				return err

@@ -119,20 +119,21 @@ func rangeServer(t *testing.T, query *url.Values, hits *int32) {
 	t.Setenv("WXYC_JWT", "unused")
 }
 
-// inZone pins the command's local zone and clock for one test.
-func inZone(t *testing.T, loc *time.Location, now time.Time) {
+// zonedApp is a test App whose local zone and clock are pinned. They live on
+// the App, not in package state, so tests that pin them can run in parallel.
+func zonedApp(t *testing.T, loc *time.Location, now time.Time) *App {
 	t.Helper()
-	oldLoc, oldNow := rangeLoc, rangeNow
-	rangeLoc, rangeNow = func() *time.Location { return loc }, func() time.Time { return now }
-	t.Cleanup(func() { rangeLoc, rangeNow = oldLoc, oldNow })
+	app := newTestApp(t)
+	app.loc, app.now = loc, func() time.Time { return now }
+	return app
 }
 
 func TestFlowsheetRange_SendsEpochMillis(t *testing.T) {
-	inZone(t, mustZone(t, "America/New_York"), time.Date(2026, 11, 24, 15, 30, 0, 0, time.UTC))
+	app := zonedApp(t, mustZone(t, "America/New_York"), time.Date(2026, 11, 24, 15, 30, 0, 0, time.UTC))
 	var q url.Values
 	var hits int32
 	rangeServer(t, &q, &hits)
-	if _, err := runCLI(t, "flowsheet", "range", "--since", "2026-11-20"); err != nil {
+	if _, err := runApp(t, app, "flowsheet", "range", "--since", "2026-11-20"); err != nil {
 		t.Fatal(err)
 	}
 	if got := q.Encode(); got != "end=1795237200000&start=1795150800000" {
@@ -141,7 +142,7 @@ func TestFlowsheetRange_SendsEpochMillis(t *testing.T) {
 }
 
 func TestFlowsheetRange_BadWindowSendsNothing(t *testing.T) {
-	inZone(t, time.UTC, time.Date(2026, 11, 24, 15, 30, 0, 0, time.UTC))
+	app := zonedApp(t, time.UTC, time.Date(2026, 11, 24, 15, 30, 0, 0, time.UTC))
 	for _, args := range [][]string{
 		{"--since", "2026-11-01", "--until", "2026-11-20"},
 		{"--since", "2026-11-20", "--until", "2026-11-19"},
@@ -150,7 +151,7 @@ func TestFlowsheetRange_BadWindowSendsNothing(t *testing.T) {
 	} {
 		var hits int32
 		rangeServer(t, nil, &hits)
-		if _, err := runCLI(t, append([]string{"flowsheet", "range"}, args...)...); err == nil {
+		if _, err := runApp(t, app, append([]string{"flowsheet", "range"}, args...)...); err == nil {
 			t.Errorf("%v: want error", args)
 		}
 		if hits != 0 {
@@ -160,10 +161,10 @@ func TestFlowsheetRange_BadWindowSendsNothing(t *testing.T) {
 }
 
 func TestFlowsheetRange_TableLabelsShowsInPlayOrder(t *testing.T) {
-	inZone(t, mustZone(t, "America/New_York"), time.Date(2026, 11, 24, 15, 30, 0, 0, time.UTC))
+	app := zonedApp(t, mustZone(t, "America/New_York"), time.Date(2026, 11, 24, 15, 30, 0, 0, time.UTC))
 	var hits int32
 	rangeServer(t, nil, &hits)
-	out, err := runCLI(t, "flowsheet", "range", "--since", "2026-11-20")
+	out, err := runApp(t, app, "flowsheet", "range", "--since", "2026-11-20")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,10 +193,10 @@ func TestFlowsheetRange_TableLabelsShowsInPlayOrder(t *testing.T) {
 }
 
 func TestFlowsheetRange_JSONIsServerBody(t *testing.T) {
-	inZone(t, time.UTC, time.Date(2026, 11, 24, 15, 30, 0, 0, time.UTC))
+	app := zonedApp(t, time.UTC, time.Date(2026, 11, 24, 15, 30, 0, 0, time.UTC))
 	var hits int32
 	rangeServer(t, nil, &hits)
-	out, err := runCLI(t, "--json", "flowsheet", "range", "--since", "2026-11-20")
+	out, err := runApp(t, app, "--json", "flowsheet", "range", "--since", "2026-11-20")
 	if err != nil {
 		t.Fatal(err)
 	}

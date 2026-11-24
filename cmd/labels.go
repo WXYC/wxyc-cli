@@ -36,6 +36,9 @@ func newLabelsSearchCmd(app *App) *cobra.Command {
 		Short: "Search record labels by name",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if limit < 1 {
+				return fmt.Errorf("--limit must be at least 1, got %d", limit)
+			}
 			labels, raw, err := app.client.LabelSearch(cmd.Context(), args[0], limit)
 			if err != nil {
 				return err
