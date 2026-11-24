@@ -84,3 +84,38 @@ func truncate(s string) string {
 	}
 	return string(r[:maxCellWidth-1]) + "…"
 }
+
+// Table is one headers/rows projection for EmitRawTables. Empty is printed in
+// place of a table with no rows (default "no results").
+type Table struct {
+	Headers []string
+	Rows    [][]string
+	Empty   string
+}
+
+// EmitRawTables is EmitRaw for a result shown as several tables (e.g. a
+// FIELD/VALUE card followed by a list). In JSON mode it passes raw through
+// exactly as EmitRaw does; in table mode it draws each table with its own
+// column alignment, separated by a blank line.
+func (r Renderer) EmitRawTables(raw []byte, tables ...Table) error {
+	if r.JSON {
+		return r.EmitRaw(raw, nil, nil)
+	}
+	for i, t := range tables {
+		if i > 0 {
+			if _, err := fmt.Fprintln(r.Out); err != nil {
+				return err
+			}
+		}
+		if len(t.Rows) == 0 && t.Empty != "" {
+			if _, err := fmt.Fprintln(r.Out, t.Empty); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := r.table(t.Headers, t.Rows); err != nil {
+			return err
+		}
+	}
+	return nil
+}

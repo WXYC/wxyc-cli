@@ -19,6 +19,7 @@ wxyc whoami                      # shows your identity and role
 
 wxyc library search --artist "aphex twin"
 wxyc library show 45029           # album detail + play counts
+wxyc library artist 812          # artist card + releases with shelf codes
 wxyc library genres
 wxyc library formats
 wxyc library rotation            # --json keeps the full nested shape
@@ -62,8 +63,9 @@ Commands marked **[write]** mutate station state and require `--write` (or
 
 | Command | Description |
 |---------|-------------|
-| `wxyc library search [--artist <name>] [--album <title>] [--on-streaming[=false]] [-n <limit>]` | Search the catalog by artist, album, and/or streaming availability. |
+| `wxyc library search [--artist <name>] [--album <title>] [--on-streaming[=false]] [-n <limit>]` | Search the catalog by artist, album, and/or streaming availability. The `ARTIST_ID` column feeds `library artist`. |
 | `wxyc library show <album_id>` | Show an album's catalog record and its flowsheet plays by arm (direct, rotation, legacy; never summed). `--json` emits `{"album": <GET /library/info>, "play_counts": <GET /library/{id}/flowsheet-play-counts>}`, both bodies verbatim. |
+| `wxyc library artist <artist_id> [--genre <id>] [--page N] [-n <limit>]` | Show an artist's card (genre, shelf code, release and cross-reference counts), then a page of their releases with shelf codes. `--genre` scopes both to one genre; `--page` is zero-based. `--json` emits `{"artist": <GET /library/artists/{id}>, "releases": <GET /library/artists/{id}/releases>}`, both bodies verbatim. |
 | `wxyc library genres` | List the genre catalog. |
 | `wxyc library formats` | List the media formats. |
 | `wxyc library rotation` | Show the current rotation. `--json` keeps the full nested shape. |

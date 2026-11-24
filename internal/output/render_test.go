@@ -90,3 +90,47 @@ func TestRenderer_EmptyTable(t *testing.T) {
 		t.Errorf("empty table should note no results, got %q", buf.String())
 	}
 }
+
+func TestRenderer_EmitRawTables_TableModeDrawsEachTableSeparately(t *testing.T) {
+	var buf bytes.Buffer
+	r := Renderer{Out: &buf}
+	err := r.EmitRawTables([]byte(`{"a":1}`),
+		Table{Headers: []string{"FIELD", "VALUE"}, Rows: [][]string{{"artist", "Stereolab"}}},
+		Table{Headers: []string{"ID", "ALBUM"}, Rows: [][]string{{"45029", "Dots and Loops"}}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "FIELD   VALUE\nartist  Stereolab\n\nID     ALBUM\n45029  Dots and Loops\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got:\n%q\nwant:\n%q", got, want)
+	}
+}
+
+func TestRenderer_EmitRawTables_EmptyTableUsesItsMessage(t *testing.T) {
+	var buf bytes.Buffer
+	r := Renderer{Out: &buf}
+	err := r.EmitRawTables(nil,
+		Table{Headers: []string{"FIELD", "VALUE"}, Rows: [][]string{{"artist", "X"}}},
+		Table{Headers: []string{"ID"}, Empty: "no releases"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); !strings.HasSuffix(got, "\n\nno releases\n") {
+		t.Errorf("got:\n%q", got)
+	}
+}
+
+func TestRenderer_EmitRawTables_JSONPassesRawThrough(t *testing.T) {
+	var buf bytes.Buffer
+	r := Renderer{JSON: true, Out: &buf}
+	if err := r.EmitRawTables([]byte(`{"artist":{"x":1},"releases":{"y":2}}`),
+		Table{Headers: []string{"A"}, Rows: [][]string{{"ignored"}}}); err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil || out["releases"] == nil || strings.Contains(buf.String(), "ignored") {
+		t.Errorf("json = %s (err %v)", buf.String(), err)
+	}
+}
