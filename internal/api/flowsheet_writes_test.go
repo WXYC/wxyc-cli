@@ -317,3 +317,28 @@ func TestFlowsheetWrite_StatusErrorSurfaces(t *testing.T) {
 		t.Fatalf("err = %v, want StatusError 400", err)
 	}
 }
+
+func TestFlowsheetAddSpotlight_PostsRoleAndName(t *testing.T) {
+	srv, got := captureServer(t, `{"id":12,"entry_type":"spotlight","spotlight_role":"performer","spotlight_name":"Weirs","message":"Live in the studio: Weirs"}`)
+	c := newTestClient(srv.URL)
+
+	e, _, err := c.FlowsheetAddSpotlight(context.Background(), "performer", "Weirs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Path != "/flowsheet" {
+		t.Errorf("path = %q, want /flowsheet", got.Path)
+	}
+	want := map[string]any{"entry_type": "spotlight", "spotlight_role": "performer", "spotlight_name": "Weirs"}
+	if len(got.Body) != len(want) {
+		t.Errorf("body = %v, want exactly %v", got.Body, want)
+	}
+	for k, v := range want {
+		if got.Body[k] != v {
+			t.Errorf("body[%q] = %v, want %v", k, got.Body[k], v)
+		}
+	}
+	if e.ID != 12 || e.Message != "Live in the studio: Weirs" {
+		t.Errorf("result = %+v, want id 12 with server-composed message", e)
+	}
+}
