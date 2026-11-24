@@ -138,9 +138,18 @@ func TestLibrarySearch_NoFilterRefusedBeforeRequest(t *testing.T) {
 	t.Setenv("WXYC_API_URL", srv.URL)
 	t.Setenv("WXYC_JWT", "unused")
 
-	_, err := runCLI(t, "library", "search")
-	if want := "give at least one of --artist, --album or --on-streaming"; err == nil || err.Error() != want {
-		t.Errorf("err = %v, want %q", err, want)
+	// A whitespace-only value is no filter either: it would otherwise send
+	// artist_name=%20%20 and get the server's 400 instead of this message.
+	for _, args := range [][]string{
+		{"library", "search"},
+		{"library", "search", "--artist", "  "},
+		{"library", "search", "--album", "\t"},
+		{"library", "search", "--artist", " ", "--album", " "},
+	} {
+		_, err := runCLI(t, args...)
+		if want := "give at least one of --artist, --album or --on-streaming"; err == nil || err.Error() != want {
+			t.Errorf("%q: err = %v, want %q", args, err, want)
+		}
 	}
 	if hits != 0 {
 		t.Errorf("server hit %d times, want 0", hits)

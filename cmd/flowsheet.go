@@ -516,7 +516,7 @@ func newFlowsheetShowCmd(app *App) *cobra.Command {
 name, program, airtime, DJs and the previous and next show ids. Show ids
 come from "wxyc flowsheet recent", "wxyc flowsheet range" (the SHOW column)
 and "wxyc djs playlists".`,
-		Args:  cobra.ExactArgs(1),
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			showID, err := strconv.Atoi(args[0])
 			if err != nil {
