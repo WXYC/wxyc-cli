@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 
 	"github.com/WXYC/wxyc-cli/internal/api"
@@ -13,6 +14,7 @@ func newLibraryCmd(app *App) *cobra.Command {
 	lib := &cobra.Command{Use: "library", Short: "Query the music library catalog"}
 	lib.AddCommand(
 		newLibrarySearchCmd(app),
+		newLibraryArtistCmd(app),
 		newGenresCmd(app),
 		newFormatsCmd(app),
 		newRotationCmd(app),
@@ -106,6 +108,73 @@ func field(m map[string]any, key string) string {
 	default:
 		return fmt.Sprintf("%v", t)
 	}
+}
+
+func newLibraryArtistCmd(app *App) *cobra.Command {
+	var genreID, page, limit int
+	cmd := &cobra.Command{
+		Use:   "artist <artist_id>",
+		Short: "Show an artist's card and releases",
+		Long: "Show an artist's card and a page of their releases.\n\n" +
+			"In --json mode this emits an object with two keys, \"artist\" and \"releases\",\n" +
+			"each holding that endpoint's response body verbatim.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("artist_id must be an integer: %q", args[0])
+			}
+			if limit < 1 || limit > 100 {
+				return fmt.Errorf("--limit must be between 1 and 100, got %d", limit)
+			}
+			if page < 0 {
+				return fmt.Errorf("--page must be zero or greater, got %d", page)
+			}
+			var genre *int
+			if cmd.Flags().Changed("genre") {
+				genre = &genreID
+			}
+			card, cardRaw, err := app.client.Artist(cmd.Context(), id, genre)
+			if err != nil {
+				return err
+			}
+			releases, releasesRaw, err := app.client.ArtistReleases(cmd.Context(), id, genre, page, limit)
+			if err != nil {
+				return err
+			}
+			if !app.render.JSON {
+				writeArtistCard(app.stdout, card)
+			}
+			rows := make([][]string, 0, len(releases.Releases))
+			for _, r := range releases.Releases {
+				rows = append(rows, []string{
+					strconv.Itoa(r.ID), r.AlbumTitle, r.Format, r.ShelfCode(),
+				})
+			}
+			combined, err := json.Marshal(map[string]json.RawMessage{
+				"artist":   cardRaw,
+				"releases": releasesRaw,
+			})
+			if err != nil {
+				return fmt.Errorf("combining responses for --json: %w", err)
+			}
+			return app.render.EmitRaw(combined, []string{"ID", "ALBUM", "FORMAT", "SHELF"}, rows)
+		},
+	}
+	cmd.Flags().IntVar(&genreID, "genre", 0, "restrict to one genre membership (id)")
+	cmd.Flags().IntVar(&page, "page", 0, "zero-based page number")
+	cmd.Flags().IntVarP(&limit, "limit", "n", 50, "releases per page (1-100)")
+	return cmd
+}
+
+func writeArtistCard(w io.Writer, card api.ArtistCard) {
+	comp := ""
+	if card.CodeCompLetter != nil && *card.CodeCompLetter != "" {
+		comp = " · comp " + *card.CodeCompLetter
+	}
+	fmt.Fprintf(w, "Artist: %s\n", card.ArtistName)
+	fmt.Fprintf(w, "Filing: %s %d%s\n", card.CodeLetters, card.CodeArtistNumber, comp)
+	fmt.Fprintf(w, "Genre: %d · releases: %d\n\n", card.GenreID, card.ReleaseCount)
 }
 
 func newLibrarySearchCmd(app *App) *cobra.Command {

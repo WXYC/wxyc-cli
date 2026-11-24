@@ -64,6 +64,29 @@ func (c *Client) Show(ctx context.Context, showID int) (Show, []byte, error) {
 	return s, raw, err
 }
 
+// Artist returns one catalog artist's card. genreID selects the membership
+// when the artist is filed under more than one genre; nil asks for the lowest.
+func (c *Client) Artist(ctx context.Context, artistID int, genreID *int) (ArtistCard, []byte, error) {
+	query := map[string]string{}
+	if genreID != nil {
+		query["genre_id"] = strconv.Itoa(*genreID)
+	}
+	var card ArtistCard
+	raw, err := c.getInto(ctx, "/library/artists/"+strconv.Itoa(artistID), query, &card)
+	return card, raw, err
+}
+
+// ArtistReleases returns one page of an artist's releases in shelf order.
+func (c *Client) ArtistReleases(ctx context.Context, artistID int, genreID *int, page, limit int) (ArtistReleasesResponse, []byte, error) {
+	query := map[string]string{"page": strconv.Itoa(page), "limit": strconv.Itoa(limit)}
+	if genreID != nil {
+		query["genre_id"] = strconv.Itoa(*genreID)
+	}
+	var resp ArtistReleasesResponse
+	raw, err := c.getInto(ctx, "/library/artists/"+strconv.Itoa(artistID)+"/releases", query, &resp)
+	return resp, raw, err
+}
+
 // Rotation returns the current rotation as raw JSON. The shape is deep
 // (nested reconciled_identity, COALESCE fallbacks), so there is no decoded
 // projection at the client layer; the command decodes generically.

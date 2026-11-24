@@ -229,6 +229,58 @@ type PlaylistDJ struct {
 	DJName string `json:"dj_name"`
 }
 
+// ArtistCard is the catalog artist card (GET /library/artists/{id}).
+type ArtistCard struct {
+	ArtistID         int     `json:"artist_id"`
+	ArtistName       string  `json:"artist_name"`
+	AlphabeticalName string  `json:"alphabetical_name"`
+	GenreID          int     `json:"genre_id"`
+	CodeLetters      string  `json:"code_letters"`
+	CodeArtistNumber int     `json:"code_artist_number"`
+	CodeCompLetter   *string `json:"code_comp_letter"`
+	ReleaseCount     int     `json:"release_count"`
+}
+
+// ArtistRelease is one release in GET /library/artists/{id}/releases.
+type ArtistRelease struct {
+	ID                int     `json:"id"`
+	LastModified      string  `json:"last_modified"`
+	Format            string  `json:"format_name"`
+	GenreID           int     `json:"genre_id"`
+	CodeLetters       string  `json:"code_letters"`
+	CodeArtistNumber  int     `json:"code_artist_number"`
+	CodeCompLetter    *string `json:"code_comp_letter"`
+	CodeNumber        int     `json:"code_number"`
+	CodeVolumeLetters *string `json:"code_volume_letters"`
+	AlbumTitle        string  `json:"album_title"`
+	AlternateArtist   *string `json:"alternate_artist_name"`
+}
+
+// ArtistReleasesResponse is one page of an artist's releases.
+type ArtistReleasesResponse struct {
+	ArtistID   int             `json:"artist_id"`
+	Releases   []ArtistRelease `json:"releases"`
+	Total      int             `json:"total"`
+	Page       int             `json:"page"`
+	TotalPages int             `json:"totalPages"`
+}
+
+// ShelfCode renders the release's filing location from its call number.
+func (r ArtistRelease) ShelfCode() string {
+	if r.CodeLetters == "" {
+		return ""
+	}
+	vol := ""
+	if r.CodeVolumeLetters != nil {
+		vol = *r.CodeVolumeLetters
+	}
+	code := fmt.Sprintf("%s %d/%d", r.CodeLetters, r.CodeArtistNumber, r.CodeNumber)
+	if vol != "" {
+		code += " " + vol
+	}
+	return code
+}
+
 // ScheduleEntry is one recurring show slot. Day is 0-6.
 type ScheduleEntry struct {
 	ID            int     `json:"id"`
