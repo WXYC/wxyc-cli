@@ -257,3 +257,24 @@ type SpecialtyShow struct {
 	Name   string `json:"name"`
 	Active bool   `json:"active"`
 }
+
+// OnAir is the on_air object of GET /flowsheet while a show is open. Only the
+// fields the CLI uses are modeled; the rest pass through --json.
+type OnAir struct {
+	DJName      string       `json:"dj_name"`
+	ShowID      int          `json:"show_id"`
+	RequestLine *RequestLine `json:"request_line"` // nil when the server failed to compute it
+}
+
+// RequestLine is what the listener request line is for right now: Mode is
+// requests, feedback or closed; Source is dj, program, spotlight or default.
+type RequestLine struct {
+	Mode   string `json:"mode"`
+	Source string `json:"source"`
+}
+
+// showRequestModePatch is the PATCH /flowsheet/shows/{id} body. No omitempty:
+// a nil RequestMode must go out as null, which clears the DJs' choice.
+type showRequestModePatch struct {
+	RequestMode *string `json:"request_mode"`
+}

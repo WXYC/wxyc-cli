@@ -24,6 +24,7 @@ func newFlowsheetCmd(app *App) *cobra.Command {
 		newFlowsheetMarkerCmd(app, "talkset", "Log a talkset", "Talkset", "talkset"),
 		newFlowsheetMarkerCmd(app, "breakpoint", "Log a breakpoint (top of hour)", "Breakpoint", "breakpoint"),
 		newFlowsheetSpotlightCmd(app),
+		newFlowsheetRequestLineCmd(app),
 		newFlowsheetMoveCmd(app),
 		newFlowsheetEditCmd(app),
 		newFlowsheetRmCmd(app),

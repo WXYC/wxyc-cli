@@ -342,3 +342,77 @@ func TestFlowsheetAddSpotlight_PostsRoleAndName(t *testing.T) {
 		t.Errorf("result = %+v, want id 12 with server-composed message", e)
 	}
 }
+
+func TestShowSetRequestMode_PatchesTheShowByID(t *testing.T) {
+	srv, got := captureServer(t, `{"id":4812,"show_name":null,"specialty_id":null}`)
+	c := newTestClient(srv.URL)
+
+	mode := "feedback"
+	if _, err := c.ShowSetRequestMode(context.Background(), 4812, &mode); err != nil {
+		t.Fatal(err)
+	}
+	if got.Method != http.MethodPatch || got.Path != "/flowsheet/shows/4812" {
+		t.Errorf("request = %s %s, want PATCH /flowsheet/shows/4812", got.Method, got.Path)
+	}
+	if len(got.Body) != 1 || got.Body["request_mode"] != "feedback" {
+		t.Errorf("body = %v, want exactly {request_mode: feedback}", got.Body)
+	}
+}
+
+func TestShowSetRequestMode_NilSendsNull(t *testing.T) {
+	srv, got := captureServer(t, `{"id":4812}`)
+	c := newTestClient(srv.URL)
+
+	if _, err := c.ShowSetRequestMode(context.Background(), 4812, nil); err != nil {
+		t.Fatal(err)
+	}
+	v, ok := got.Body["request_mode"]
+	if !ok || v != nil {
+		t.Errorf("body = %v, want request_mode: null (present, not omitted)", got.Body)
+	}
+}
+
+func TestFlowsheetOnAir(t *testing.T) {
+	cases := []struct {
+		name     string
+		resp     string
+		wantErr  error
+		wantShow int
+		wantMode string
+	}{
+		{"open show",
+			`{"entries":[],"on_air":{"dj_name":"DJ Lark","show_id":4812,"show_name":null,"request_line":{"mode":"feedback","source":"program"}}}`,
+			nil, 4812, "feedback"},
+		{"automation", `{"entries":[],"on_air":null}`, ErrNoOpenShow, 0, ""},
+		{"unknown", `{"entries":[]}`, ErrOnAirUnknown, 0, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var path string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				path = r.URL.Path
+				_, _ = w.Write([]byte(tc.resp))
+			}))
+			t.Cleanup(srv.Close)
+			c := newTestClient(srv.URL)
+
+			o, raw, err := c.FlowsheetOnAir(context.Background())
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tc.wantErr)
+			}
+			if path != "/flowsheet" {
+				t.Errorf("path = %q, want /flowsheet", path)
+			}
+			if tc.wantErr != nil {
+				return
+			}
+			if o.ShowID != tc.wantShow || o.RequestLine == nil || o.RequestLine.Mode != tc.wantMode {
+				t.Errorf("on_air = %+v, want show %d mode %q", o, tc.wantShow, tc.wantMode)
+			}
+			var back map[string]any
+			if err := json.Unmarshal(raw, &back); err != nil || back["dj_name"] != "DJ Lark" {
+				t.Errorf("raw = %s, want the on_air object verbatim", raw)
+			}
+		})
+	}
+}
