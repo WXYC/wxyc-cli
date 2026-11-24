@@ -70,6 +70,7 @@ Commands marked **[write]** mutate station state and require `--write` (or
 
 | Command | Description |
 |---------|-------------|
+| `wxyc flowsheet now` | Show what's on air right now: status (`live`, `Auto DJ` on automation, or `unknown` when the server does not say), the DJs on air, and while live the show name, specialty program, request-line mode and its source, and the current spotlight; then the last track played. `--json` prints `{"flowsheet": <GET /flowsheet>, "djs_on_air": <GET /flowsheet/djs-on-air>}`, both server bodies verbatim. |
 | `wxyc flowsheet tail [-n <limit>]` | Show the most recent entries (default 10). |
 | `wxyc flowsheet show <show_id>` | Show every entry of one past or current show, in play order. Show ids come from `djs playlists`. |
 | `wxyc flowsheet search [query] [-n <limit>] [--page <n>] [--sort date\|artist\|song\|dj] [--order asc\|desc] [--cursor <token>]` | Search the playlist archive by artist, track, album, label or DJ. With no query, lists the most recent tracks. `--limit` is 1 to 100 (default 50). Table shows date, DJ, artist, track and album, then a paging footer; date-sorted full pages print a `--cursor` token for the next page. |
