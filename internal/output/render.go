@@ -119,8 +119,10 @@ func truncate(s string) string {
 }
 
 // Table is one headers/rows projection for EmitRawTables. Empty is printed in
-// place of a table with no rows (default "no results").
+// place of a table with no rows (default "no results"). A Title, when set, is
+// printed as "Title:" on the line above.
 type Table struct {
+	Title   string
 	Headers []string
 	Rows    [][]string
 	Empty   string
@@ -131,22 +133,91 @@ type Table struct {
 // exactly as EmitRaw does; in table mode it draws each table with its own
 // column alignment, separated by a blank line.
 func (r Renderer) EmitRawTables(raw []byte, tables ...Table) error {
+	blocks := make([]Block, len(tables))
+	for i, t := range tables {
+		blocks[i] = t
+	}
+	return r.EmitRawBlocks(raw, blocks...)
+}
+
+// Block is one part of a table-mode result drawn by EmitRawBlocks: a Table
+// or a Text.
+type Block interface {
+	write(r Renderer) error
+}
+
+// Text is prose printed whole under "Heading:", for DJ-written text too long
+// for a table cell (e.g. a review). Its line breaks are kept and every line
+// is indented two spaces; like a cell, it is otherwise sanitized.
+type Text struct {
+	Heading string
+	Body    string
+}
+
+func (t Text) write(r Renderer) error {
+	var b strings.Builder
+	b.WriteString(sanitize(t.Heading) + ":\n")
+	for _, line := range strings.Split(proseLines(t.Body), "\n") {
+		if line = strings.TrimRight(line, " \t"); line != "" {
+			b.WriteString("  " + line)
+		}
+		b.WriteByte('\n')
+	}
+	_, err := io.WriteString(r.Out, b.String())
+	return err
+}
+
+// proseLines normalizes every line break (\r\n, \r, U+2028, U+2029) to \n
+// and sanitizes the rest as a cell would, except that tabs are kept: outside
+// a tabwriter they can't forge a column.
+func proseLines(s string) string {
+	s = strings.NewReplacer("\r\n", "\n", "\r", "\n", "\u2028", "\n", "\u2029", "\n").Replace(s)
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		parts := strings.Split(l, "\t")
+		for j, p := range parts {
+			parts[j] = sanitize(p)
+		}
+		lines[i] = strings.Join(parts, "\t")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (t Table) write(r Renderer) error {
+	if t.Title != "" {
+		if _, err := fmt.Fprintln(r.Out, sanitize(t.Title)+":"); err != nil {
+			return err
+		}
+	}
+	if len(t.Rows) == 0 && t.Empty != "" {
+		_, err := fmt.Fprintln(r.Out, t.Empty)
+		return err
+	}
+	return r.table(t.Headers, t.Rows)
+}
+
+// Note is a single line of text, e.g. a page position under a list.
+type Note string
+
+func (n Note) write(r Renderer) error {
+	_, err := fmt.Fprintln(r.Out, sanitize(string(n)))
+	return err
+}
+
+// EmitRawBlocks is EmitRawTables for a result that mixes tables and prose.
+// In JSON mode it passes raw through exactly as EmitRaw does; in table mode
+// it draws each block in turn, separated by a blank line.
+func (r Renderer) EmitRawBlocks(raw []byte, blocks ...Block) error {
 	if r.JSON {
 		return r.EmitRaw(raw, nil, nil)
 	}
-	for i, t := range tables {
+	for i, b := range blocks {
 		if i > 0 {
 			if _, err := fmt.Fprintln(r.Out); err != nil {
 				return err
 			}
 		}
-		if len(t.Rows) == 0 && t.Empty != "" {
-			if _, err := fmt.Fprintln(r.Out, t.Empty); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := r.table(t.Headers, t.Rows); err != nil {
+		if err := b.write(r); err != nil {
 			return err
 		}
 	}

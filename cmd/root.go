@@ -56,6 +56,7 @@ func newRoot(app *App) *cobra.Command {
 		newDJsCmd(app),
 		newLabelsCmd(app),
 		newScheduleCmd(app),
+		newReviewsCmd(app),
 	)
 	return root
 }
