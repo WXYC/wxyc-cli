@@ -229,6 +229,30 @@ type PlaylistDJ struct {
 	DJName string `json:"dj_name"`
 }
 
+// FlowsheetSearchResult is one row of GET /flowsheet/search.
+type FlowsheetSearchResult struct {
+	ID          int     `json:"id"`
+	PlayDate    string  `json:"play_date"`
+	ArtistName  string  `json:"artist_name"`
+	TrackTitle  string  `json:"track_title"`
+	AlbumTitle  string  `json:"album_title"`
+	RecordLabel string  `json:"record_label"`
+	ShowID      int     `json:"show_id"`
+	DJName      string  `json:"dj_name"`
+	RotationBin *string `json:"rotation_bin"`
+	RequestFlag bool    `json:"request_flag"`
+	OnStreaming *bool   `json:"on_streaming"`
+}
+
+// FlowsheetSearchResponse is the envelope of GET /flowsheet/search.
+type FlowsheetSearchResponse struct {
+	Results    []FlowsheetSearchResult `json:"results"`
+	Total      int                     `json:"total"`
+	Page       int                     `json:"page"`
+	TotalPages int                     `json:"totalPages"`
+	NextCursor string                  `json:"nextCursor,omitempty"`
+}
+
 // ScheduleEntry is one recurring show slot. Day is 0-6.
 type ScheduleEntry struct {
 	ID            int     `json:"id"`

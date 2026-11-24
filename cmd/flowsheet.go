@@ -14,6 +14,7 @@ func newFlowsheetCmd(app *App) *cobra.Command {
 	fs := &cobra.Command{Use: "flowsheet", Short: "Read and manage the on-air flowsheet log"}
 	fs.AddCommand(
 		newFlowsheetTailCmd(app),
+		newFlowsheetSearchCmd(app),
 		newFlowsheetShowCmd(app),
 		newFlowsheetStartCmd(app),
 		newFlowsheetAddCmd(app),
@@ -337,6 +338,57 @@ func newFlowsheetTailCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVarP(&n, "limit", "n", 10, "number of entries")
+	return cmd
+}
+
+func newFlowsheetSearchCmd(app *App) *cobra.Command {
+	var (
+		limit, page int
+		sortBy      string
+		order       string
+		cursor      string
+	)
+	cmd := &cobra.Command{
+		Use:   "search [query]",
+		Short: "Search the public playlist archive",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if limit < 1 || limit > 100 {
+				return fmt.Errorf("--limit must be between 1 and 100, got %d", limit)
+			}
+			if page < 0 {
+				return fmt.Errorf("--page must be zero or greater, got %d", page)
+			}
+			params := map[string]string{
+				"limit": strconv.Itoa(limit),
+				"sort":  sortBy,
+				"order": order,
+			}
+			if len(args) > 0 && args[0] != "" {
+				params["q"] = args[0]
+			}
+			if page > 0 {
+				params["page"] = strconv.Itoa(page)
+			}
+			if cursor != "" {
+				params["cursor"] = cursor
+			}
+			resp, raw, err := app.client.FlowsheetSearch(cmd.Context(), params)
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, 0, len(resp.Results))
+			for _, r := range resp.Results {
+				rows = append(rows, []string{r.PlayDate, r.DJName, r.ArtistName, r.TrackTitle, r.AlbumTitle})
+			}
+			return app.render.EmitRaw(raw, []string{"DATE", "DJ", "ARTIST", "TRACK", "ALBUM"}, rows)
+		},
+	}
+	cmd.Flags().IntVarP(&limit, "limit", "n", 50, "results per page (1-100)")
+	cmd.Flags().IntVar(&page, "page", 0, "zero-based page number")
+	cmd.Flags().StringVar(&sortBy, "sort", "date", "sort by date, artist, song or dj")
+	cmd.Flags().StringVar(&order, "order", "desc", "asc or desc")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "cursor token from a previous page")
 	return cmd
 }
 

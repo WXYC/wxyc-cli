@@ -25,3 +25,12 @@ func (c *Client) Flowsheet(ctx context.Context, limit int) ([]FlowsheetEntry, []
 	raw, err := c.getInto(ctx, "/flowsheet", q, &resp)
 	return resp.Entries, raw, err
 }
+
+// FlowsheetSearch queries the public playlist archive. Params mirror the
+// server: q, limit (1-100), page, sort (date|artist|song|dj), order
+// (asc|desc) and cursor. A malformed cursor is a server 400.
+func (c *Client) FlowsheetSearch(ctx context.Context, params map[string]string) (FlowsheetSearchResponse, []byte, error) {
+	var resp FlowsheetSearchResponse
+	raw, err := c.getInto(ctx, "/flowsheet/search", params, &resp)
+	return resp, raw, err
+}
