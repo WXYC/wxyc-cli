@@ -195,3 +195,69 @@ func TestRenderer_Table_SanitizesFormatAndSeparatorCharacters(t *testing.T) {
 		})
 	}
 }
+
+// A Text block prints long DJ-written prose whole, with its line breaks, under
+// a heading: the table's cell cap would cut a review to one line.
+func TestRenderer_EmitRawBlocks_TextIsWholeAndKeepsLines(t *testing.T) {
+	var buf bytes.Buffer
+	r := Renderer{Out: &buf}
+	long := strings.Repeat("word ", 30) + "end"
+	err := r.EmitRawBlocks([]byte(`{"a":1}`),
+		Table{Headers: []string{"FIELD", "VALUE"}, Rows: [][]string{{"id", "812"}}},
+		Text{Heading: "review", Body: long + "\r\n\nSecond paragraph."},
+		Text{Heading: "fcc", Body: "None"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "FIELD  VALUE\nid     812\n\nreview:\n  " + long + "\n\n  Second paragraph.\n\nfcc:\n  None\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got:\n%q\nwant:\n%q", got, want)
+	}
+}
+
+// Prose keeps its line breaks but nothing else that could drive the
+// terminal or reorder text; each line is indented, so a body can't forge a
+// heading line.
+func TestRenderer_EmitRawBlocks_TextIsSanitized(t *testing.T) {
+	var buf bytes.Buffer
+	r := Renderer{Out: &buf}
+	err := r.EmitRawBlocks(nil, Text{Heading: "review", Body: "Red \x1b[31mtext‮evil fcc:\tok\rX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "review:\n  Red �[31mtextevil\n  fcc:\tok\n  X\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got:\n%q\nwant:\n%q", got, want)
+	}
+}
+
+func TestRenderer_EmitRawBlocks_JSONPassesRawThrough(t *testing.T) {
+	var buf bytes.Buffer
+	r := Renderer{JSON: true, Out: &buf}
+	if err := r.EmitRawBlocks([]byte(`{"review":"x\ny"}`), Text{Heading: "ignored", Body: "ignored"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); got != "{\n  \"review\": \"x\\ny\"\n}\n" {
+		t.Errorf("json = %q", got)
+	}
+}
+
+// A titled table prints "Title:" directly over its table (or its Empty
+// message); a Note is one sanitized line.
+func TestRenderer_EmitRawBlocks_TitledTableAndNote(t *testing.T) {
+	var buf bytes.Buffer
+	r := Renderer{Out: &buf}
+	err := r.EmitRawBlocks(nil,
+		Table{Title: "in-app reviews", Headers: []string{"ID"}, Rows: [][]string{{"812"}}},
+		Table{Title: "form archive", Headers: []string{"ID"}, Empty: "no archived reviews"},
+		Note("next: --page 2\x1b"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "in-app reviews:\nID\n812\n\nform archive:\nno archived reviews\n\nnext: --page 2�\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got:\n%q\nwant:\n%q", got, want)
+	}
+}

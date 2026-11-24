@@ -94,6 +94,10 @@ exchange, transport, session store). `internal/safety` (write gate) and
   `map[string]any` in `cmd/library.go`). Table mode truncates any cell over
   `maxCellWidth` (48 runes) so one long value can't blow out column widths for
   every row — this only affects the table, never `--json`.
+  `EmitRawBlocks` draws a table-mode result as several `Block`s — `Table`
+  (optionally titled), `Text` (prose printed whole with its line breaks, for
+  e.g. a review too long for a cell) and `Note` (one line) — while `--json`
+  still passes the raw bytes through.
 - **`internal/config`** — env var resolution with defaults (`WXYC_API_URL`,
   derived `WXYC_AUTH_URL`, `WXYC_PROFILE`). Takes a `getenv func(string)
   string` for testability rather than reading `os.Getenv` directly.
