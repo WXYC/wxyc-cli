@@ -41,6 +41,7 @@ type FlowsheetEntry struct {
 	ID          int    `json:"id"`
 	ShowID      int    `json:"show_id"`
 	PlayOrder   int    `json:"play_order"`
+	AddTime     string `json:"add_time"`
 	EntryType   string `json:"entry_type"`
 	ArtistName  string `json:"artist_name"`
 	AlbumTitle  string `json:"album_title"`
