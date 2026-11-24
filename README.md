@@ -109,6 +109,7 @@ Commands marked **[write]** mutate station state and require `--write` (or
 |---------|-------------|
 | `wxyc labels list` | List all record labels. |
 | `wxyc labels search <query> [-n <limit>]` | Search labels by name (default 10 results). |
+| `wxyc labels show <id>` | Show a label's name, parent label id, child label count and how many library, rotation, flowsheet and intake rows reference it. `--json` prints the server's body verbatim. A missing label exits 5. |
 
 ### `schedule`
 
@@ -173,7 +174,7 @@ catalog writes regardless — the server returns 403.
   all; approve from the iOS app. The `SignInStrategy` interface is already in
   place for it.
 - OIDC + PKCE as a registered trusted client.
-- Remaining read surface (label/genre detail).
+- Remaining read surface (genre detail).
 
 ## Development
 
