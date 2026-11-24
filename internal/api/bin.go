@@ -25,7 +25,8 @@ func (c *Client) Bin(ctx context.Context) ([]BinItem, []byte, error) {
 
 // BinAdd saves an album to the DJ's bin. Mutating: gated behind --write.
 func (c *Client) BinAdd(ctx context.Context, albumID int) error {
-	return c.post(ctx, "/djs/bin", map[string]int{"album_id": albumID}, nil)
+	_, err := c.postRaw(ctx, "/djs/bin", map[string]int{"album_id": albumID})
+	return err
 }
 
 // BinRemove removes an album from the DJ's bin and returns the deleted bins

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,45 +9,14 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/WXYC/wxyc-cli/internal/testutil"
 )
 
-// fakeJWT builds an unsigned token whose payload carries the given sub claim.
-// ParseClaims decodes the payload segment without verifying, so this is enough
-// for the dj_id-from-token path (resolveDJID).
-func fakeJWT(sub string) string {
-	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"` + sub + `"}`))
-	return "h." + payload + ".s"
-}
-
-// captureFlowsheetServer records the last mutating request and replies with resp.
-func captureFlowsheetServer(t *testing.T, resp string) (*httptest.Server, *struct {
-	Method string
-	Path   string
-	Body   map[string]any
-}) {
-	t.Helper()
-	got := &struct {
-		Method string
-		Path   string
-		Body   map[string]any
-	}{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			got.Method, got.Path = r.Method, r.URL.Path
-			b, _ := io.ReadAll(r.Body)
-			_ = json.Unmarshal(b, &got.Body)
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(resp))
-	}))
-	t.Cleanup(srv.Close)
-	return srv, got
-}
-
 func TestFlowsheetStart_PostsJoinWithTokenDJID(t *testing.T) {
-	srv, got := captureFlowsheetServer(t, `{"id":77,"show_name":"Freeform","primary_dj_id":"dj-42","end_time":null}`)
+	srv, got := testutil.CaptureServer(t, `{"id":77,"show_name":"Freeform","primary_dj_id":"dj-42","end_time":null}`)
 	t.Setenv("WXYC_API_URL", srv.URL)
-	t.Setenv("WXYC_JWT", fakeJWT("dj-42"))
+	t.Setenv("WXYC_JWT", testutil.FakeJWT("dj-42"))
 
 	out, err := runCLI(t, "flowsheet", "start", "--name", "Freeform", "--write")
 	if err != nil {
@@ -76,7 +44,7 @@ func TestFlowsheetAdd_RequiresArtistAlbumWithoutAlbumID(t *testing.T) {
 }
 
 func TestFlowsheetAdd_PostsTrack(t *testing.T) {
-	srv, got := captureFlowsheetServer(t, `{"id":501,"entry_type":"track","artist_name":"Boards","track_title":"Roygbiv"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":501,"entry_type":"track","artist_name":"Boards","track_title":"Roygbiv"}`)
 	t.Setenv("WXYC_API_URL", srv.URL)
 	t.Setenv("WXYC_JWT", "unused")
 
@@ -97,7 +65,7 @@ func TestFlowsheetAdd_PostsTrack(t *testing.T) {
 }
 
 func TestFlowsheetTalkset_PostsMarker(t *testing.T) {
-	srv, got := captureFlowsheetServer(t, `{"id":9,"entry_type":"talkset","message":"Talkset"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":9,"entry_type":"talkset","message":"Talkset"}`)
 	t.Setenv("WXYC_API_URL", srv.URL)
 	t.Setenv("WXYC_JWT", "unused")
 
@@ -113,7 +81,7 @@ func TestFlowsheetTalkset_PostsMarker(t *testing.T) {
 }
 
 func TestFlowsheetMove_PatchesPlayOrder(t *testing.T) {
-	srv, got := captureFlowsheetServer(t, `{"id":501,"entry_type":"track","play_order":2,"artist_name":"Boards"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":501,"entry_type":"track","play_order":2,"artist_name":"Boards"}`)
 	t.Setenv("WXYC_API_URL", srv.URL)
 	t.Setenv("WXYC_JWT", "unused")
 
@@ -146,7 +114,7 @@ func TestFlowsheetMove_RejectsNonIntAndBadPosition(t *testing.T) {
 }
 
 func TestFlowsheetEdit_PatchesChangedFieldsOnly(t *testing.T) {
-	srv, got := captureFlowsheetServer(t, `{"id":501,"entry_type":"track","artist_name":"Boards"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":501,"entry_type":"track","artist_name":"Boards"}`)
 	t.Setenv("WXYC_API_URL", srv.URL)
 	t.Setenv("WXYC_JWT", "unused")
 
@@ -189,7 +157,7 @@ func TestFlowsheetEdit_FailsFastWithNoFields(t *testing.T) {
 }
 
 func TestFlowsheetRm_DeletesEntry(t *testing.T) {
-	srv, got := captureFlowsheetServer(t, `{"id":501,"entry_type":"track","artist_name":"Boards","track_title":"Roygbiv"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":501,"entry_type":"track","artist_name":"Boards","track_title":"Roygbiv"}`)
 	t.Setenv("WXYC_API_URL", srv.URL)
 	t.Setenv("WXYC_JWT", "unused")
 
@@ -209,9 +177,9 @@ func TestFlowsheetRm_DeletesEntry(t *testing.T) {
 }
 
 func TestFlowsheetEnd_PostsEndWithTokenDJID(t *testing.T) {
-	srv, got := captureFlowsheetServer(t, `{"id":77,"end_time":"2026-07-10T05:00:00Z"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":77,"end_time":"2026-07-10T05:00:00Z"}`)
 	t.Setenv("WXYC_API_URL", srv.URL)
-	t.Setenv("WXYC_JWT", fakeJWT("dj-42"))
+	t.Setenv("WXYC_JWT", testutil.FakeJWT("dj-42"))
 
 	out, err := runCLI(t, "flowsheet", "end", "--write")
 	if err != nil {
@@ -267,7 +235,7 @@ func TestFlowsheetStart_Specialty(t *testing.T) {
 		t.Run(tc.flag, func(t *testing.T) {
 			srv, got := specialtyServer(t)
 			t.Setenv("WXYC_API_URL", srv.URL)
-			t.Setenv("WXYC_JWT", fakeJWT("dj-42"))
+			t.Setenv("WXYC_JWT", testutil.FakeJWT("dj-42"))
 			_, err := runCLI(t, "flowsheet", "start", "--specialty", tc.flag, "--write")
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
@@ -354,7 +322,7 @@ func TestFlowsheetShow_TableIsInPlayOrder(t *testing.T) {
 func TestFlowsheetSpotlight_PostsEachRole(t *testing.T) {
 	for _, role := range []string{"performer", "dj", "reader", "guest", "host"} {
 		t.Run(role, func(t *testing.T) {
-			srv, got := captureFlowsheetServer(t, `{"id":12,"entry_type":"spotlight","message":"In the studio: Weirs"}`)
+			srv, got := testutil.CaptureServer(t, `{"id":12,"entry_type":"spotlight","message":"In the studio: Weirs"}`)
 			t.Setenv("WXYC_API_URL", srv.URL)
 			t.Setenv("WXYC_JWT", "unused")
 
@@ -413,7 +381,7 @@ func TestFlowsheetSpotlight_RefusesBadInputBeforeRequest(t *testing.T) {
 }
 
 func TestFlowsheetSpotlight_AcceptsA128CharacterName(t *testing.T) {
-	srv, got := captureFlowsheetServer(t, `{"id":1,"entry_type":"spotlight"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":1,"entry_type":"spotlight"}`)
 	t.Setenv("WXYC_API_URL", srv.URL)
 	t.Setenv("WXYC_JWT", "unused")
 
@@ -543,7 +511,7 @@ func TestFlowsheetEdit_SpotlightFieldsBuildPatchData(t *testing.T) {
 			map[string]any{"spotlight_role": "reader", "spotlight_name": "Jane Doe"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv, got := captureFlowsheetServer(t, spotlightEntry(3, "performer", "The Weirs"))
+			srv, got := testutil.CaptureServer(t, spotlightEntry(3, "performer", "The Weirs"))
 			t.Setenv("WXYC_API_URL", srv.URL)
 			t.Setenv("WXYC_JWT", "unused")
 

@@ -10,38 +10,15 @@ import (
 	"testing"
 
 	"github.com/WXYC/wxyc-cli/internal/auth"
+	"github.com/WXYC/wxyc-cli/internal/testutil"
 )
-
-// captureServer records the method, path, and decoded body of the single
-// request it serves, then replies with resp.
-func captureServer(t *testing.T, resp string) (*httptest.Server, *struct {
-	Method string
-	Path   string
-	Body   map[string]any
-}) {
-	t.Helper()
-	got := &struct {
-		Method string
-		Path   string
-		Body   map[string]any
-	}{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got.Method, got.Path = r.Method, r.URL.Path
-		b, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(b, &got.Body)
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(resp))
-	}))
-	t.Cleanup(srv.Close)
-	return srv, got
-}
 
 func newTestClient(url string) *Client {
 	return &Client{BaseURL: url, HTTP: http.DefaultClient}
 }
 
 func TestFlowsheetStart_PostsJoinWithDJID(t *testing.T) {
-	srv, got := captureServer(t, `{"id":77,"show_name":"Freeform","primary_dj_id":"dj-42","end_time":null}`)
+	srv, got := testutil.CaptureServer(t, `{"id":77,"show_name":"Freeform","primary_dj_id":"dj-42","end_time":null}`)
 	c := newTestClient(srv.URL)
 
 	s, _, err := c.FlowsheetStart(context.Background(), StartShowRequest{DJID: "dj-42", ShowName: "Freeform"})
@@ -60,7 +37,7 @@ func TestFlowsheetStart_PostsJoinWithDJID(t *testing.T) {
 }
 
 func TestFlowsheetStart_OmitsEmptyOptionals(t *testing.T) {
-	srv, got := captureServer(t, `{"id":1}`)
+	srv, got := testutil.CaptureServer(t, `{"id":1}`)
 	c := newTestClient(srv.URL)
 
 	if _, _, err := c.FlowsheetStart(context.Background(), StartShowRequest{DJID: "dj-42"}); err != nil {
@@ -75,7 +52,7 @@ func TestFlowsheetStart_OmitsEmptyOptionals(t *testing.T) {
 
 func TestFlowsheetStart_CohostUsesShowID(t *testing.T) {
 	// Joining an active show echoes a show_djs row (show_id, no id).
-	srv, _ := captureServer(t, `{"show_id":88,"dj_id":"dj-9"}`)
+	srv, _ := testutil.CaptureServer(t, `{"show_id":88,"dj_id":"dj-9"}`)
 	c := newTestClient(srv.URL)
 
 	s, _, err := c.FlowsheetStart(context.Background(), StartShowRequest{DJID: "dj-9"})
@@ -88,7 +65,7 @@ func TestFlowsheetStart_CohostUsesShowID(t *testing.T) {
 }
 
 func TestFlowsheetEnd_PostsEndWithDJID(t *testing.T) {
-	srv, got := captureServer(t, `{"id":77,"end_time":"2026-07-10T05:00:00Z"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":77,"end_time":"2026-07-10T05:00:00Z"}`)
 	c := newTestClient(srv.URL)
 
 	if _, _, err := c.FlowsheetEnd(context.Background(), "dj-42"); err != nil {
@@ -103,7 +80,7 @@ func TestFlowsheetEnd_PostsEndWithDJID(t *testing.T) {
 }
 
 func TestFlowsheetAddTrack_PostsTrackFields(t *testing.T) {
-	srv, got := captureServer(t, `{"id":501,"entry_type":"track","artist_name":"Boards","track_title":"Roygbiv"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":501,"entry_type":"track","artist_name":"Boards","track_title":"Roygbiv"}`)
 	c := newTestClient(srv.URL)
 
 	e, _, err := c.FlowsheetAddTrack(context.Background(), FlowsheetTrack{
@@ -128,7 +105,7 @@ func TestFlowsheetAddTrack_PostsTrackFields(t *testing.T) {
 }
 
 func TestFlowsheetAddTrack_WithAlbumIDOmitsBlankFields(t *testing.T) {
-	srv, got := captureServer(t, `{"id":1,"entry_type":"track"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":1,"entry_type":"track"}`)
 	c := newTestClient(srv.URL)
 
 	albumID := 45029
@@ -149,7 +126,7 @@ func TestFlowsheetAddTrack_WithAlbumIDOmitsBlankFields(t *testing.T) {
 }
 
 func TestFlowsheetAddMarker_PostsMessageAndType(t *testing.T) {
-	srv, got := captureServer(t, `{"id":9,"entry_type":"talkset","message":"Talkset"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":9,"entry_type":"talkset","message":"Talkset"}`)
 	c := newTestClient(srv.URL)
 
 	e, _, err := c.FlowsheetAddMarker(context.Background(), "Talkset", "talkset")
@@ -165,7 +142,7 @@ func TestFlowsheetAddMarker_PostsMessageAndType(t *testing.T) {
 }
 
 func TestFlowsheetMove_PatchesPlayOrder(t *testing.T) {
-	srv, got := captureServer(t, `{"id":501,"entry_type":"track","play_order":2}`)
+	srv, got := testutil.CaptureServer(t, `{"id":501,"entry_type":"track","play_order":2}`)
 	c := newTestClient(srv.URL)
 
 	e, _, err := c.FlowsheetMove(context.Background(), 501, 2)
@@ -185,7 +162,7 @@ func TestFlowsheetMove_PatchesPlayOrder(t *testing.T) {
 }
 
 func TestFlowsheetUpdate_PatchesChangedFields(t *testing.T) {
-	srv, got := captureServer(t, `{"id":501,"entry_type":"track","artist_name":"Boards"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":501,"entry_type":"track","artist_name":"Boards"}`)
 	c := newTestClient(srv.URL)
 
 	artist := "Boards"
@@ -221,7 +198,7 @@ func TestFlowsheetUpdate_PatchesChangedFields(t *testing.T) {
 }
 
 func TestFlowsheetUpdate_SendsEmptyStringToClear(t *testing.T) {
-	srv, got := captureServer(t, `{"id":501}`)
+	srv, got := testutil.CaptureServer(t, `{"id":501}`)
 	c := newTestClient(srv.URL)
 
 	empty := ""
@@ -237,7 +214,7 @@ func TestFlowsheetUpdate_SendsEmptyStringToClear(t *testing.T) {
 }
 
 func TestFlowsheetDelete_DeletesWithBody(t *testing.T) {
-	srv, got := captureServer(t, `{"id":501,"entry_type":"track","artist_name":"Boards"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":501,"entry_type":"track","artist_name":"Boards"}`)
 	c := newTestClient(srv.URL)
 
 	e, _, err := c.FlowsheetDelete(context.Background(), 501)
@@ -319,7 +296,7 @@ func TestFlowsheetWrite_StatusErrorSurfaces(t *testing.T) {
 }
 
 func TestFlowsheetAddSpotlight_PostsRoleAndName(t *testing.T) {
-	srv, got := captureServer(t, `{"id":12,"entry_type":"spotlight","spotlight_role":"performer","spotlight_name":"Weirs","message":"Live in the studio: Weirs"}`)
+	srv, got := testutil.CaptureServer(t, `{"id":12,"entry_type":"spotlight","spotlight_role":"performer","spotlight_name":"Weirs","message":"Live in the studio: Weirs"}`)
 	c := newTestClient(srv.URL)
 
 	e, _, err := c.FlowsheetAddSpotlight(context.Background(), "performer", "Weirs")
@@ -344,7 +321,7 @@ func TestFlowsheetAddSpotlight_PostsRoleAndName(t *testing.T) {
 }
 
 func TestShowSetRequestMode_PatchesTheShowByID(t *testing.T) {
-	srv, got := captureServer(t, `{"id":4812,"show_name":null,"specialty_id":null}`)
+	srv, got := testutil.CaptureServer(t, `{"id":4812,"show_name":null,"specialty_id":null}`)
 	c := newTestClient(srv.URL)
 
 	mode := "feedback"
@@ -360,7 +337,7 @@ func TestShowSetRequestMode_PatchesTheShowByID(t *testing.T) {
 }
 
 func TestShowSetRequestMode_NilSendsNull(t *testing.T) {
-	srv, got := captureServer(t, `{"id":4812}`)
+	srv, got := testutil.CaptureServer(t, `{"id":4812}`)
 	c := newTestClient(srv.URL)
 
 	if _, err := c.ShowSetRequestMode(context.Background(), 4812, nil); err != nil {

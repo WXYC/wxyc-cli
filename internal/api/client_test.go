@@ -8,9 +8,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/WXYC/wxyc-cli/internal/testutil"
 )
 
-func TestClient_Get_DecodesJSON(t *testing.T) {
+func TestClient_GetInto_DecodesJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`[{"id":1,"artist_name":"Aphex Twin"}]`))
@@ -22,15 +24,15 @@ func TestClient_Get_DecodesJSON(t *testing.T) {
 		ID     int    `json:"id"`
 		Artist string `json:"artist_name"`
 	}
-	if err := c.get(context.Background(), "/library/", nil, &out); err != nil {
-		t.Fatalf("get() error = %v", err)
+	if _, err := c.getInto(context.Background(), "/library/", nil, &out); err != nil {
+		t.Fatalf("getInto() error = %v", err)
 	}
 	if len(out) != 1 || out[0].Artist != "Aphex Twin" {
 		t.Fatalf("decoded %+v, want one Aphex Twin row", out)
 	}
 }
 
-func TestClient_Get_SendsQuery(t *testing.T) {
+func TestClient_GetInto_SendsQuery(t *testing.T) {
 	var gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotQuery = r.URL.RawQuery
@@ -41,7 +43,7 @@ func TestClient_Get_SendsQuery(t *testing.T) {
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
 	q := map[string]string{"artist_name": "boards of canada"}
 	var out []any
-	if err := c.get(context.Background(), "/library/", q, &out); err != nil {
+	if _, err := c.getInto(context.Background(), "/library/", q, &out); err != nil {
 		t.Fatal(err)
 	}
 	if gotQuery != "artist_name=boards+of+canada" {
@@ -49,7 +51,7 @@ func TestClient_Get_SendsQuery(t *testing.T) {
 	}
 }
 
-func TestClient_Get_MapsStatusToError(t *testing.T) {
+func TestClient_GetInto_MapsStatusToError(t *testing.T) {
 	tests := []struct {
 		code int
 	}{{http.StatusUnauthorized}, {http.StatusForbidden}, {http.StatusNotFound}, {http.StatusInternalServerError}}
@@ -59,7 +61,7 @@ func TestClient_Get_MapsStatusToError(t *testing.T) {
 		}))
 		c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
 		var out any
-		err := c.get(context.Background(), "/x", nil, &out)
+		_, err := c.getInto(context.Background(), "/x", nil, &out)
 		var se *StatusError
 		if !errors.As(err, &se) {
 			srv.Close()
@@ -134,5 +136,68 @@ func TestClient_Raw_EmptyBodyIsNotAnError(t *testing.T) {
 	raw, err := c.getRaw(context.Background(), "/flowsheet/latest", nil)
 	if err != nil || len(raw) != 0 {
 		t.Errorf("getRaw() = %q, %v; want empty, nil", raw, err)
+	}
+}
+
+// Every request path must send the JSON headers; testutil.CaptureServer fails
+// the test if Accept (always) or Content-Type (with a body) is missing.
+func TestClient_SendsJSONHeaders(t *testing.T) {
+	ctx := context.Background()
+	calls := map[string]func(c *Client) error{
+		"getRaw": func(c *Client) error { _, err := c.getRaw(ctx, "/x", map[string]string{"a": "1"}); return err },
+		"deleteQueryRaw": func(c *Client) error {
+			_, err := c.deleteQueryRaw(ctx, "/x", map[string]string{"a": "1"})
+			return err
+		},
+		"postRaw":   func(c *Client) error { _, err := c.postRaw(ctx, "/x", map[string]int{"a": 1}); return err },
+		"patchRaw":  func(c *Client) error { _, err := c.patchRaw(ctx, "/x", map[string]int{"a": 1}); return err },
+		"deleteRaw": func(c *Client) error { _, err := c.deleteRaw(ctx, "/x", map[string]int{"a": 1}); return err },
+		"BinAdd":    func(c *Client) error { return c.BinAdd(ctx, 45029) },
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			srv, _ := testutil.CaptureServer(t, `{}`)
+			if err := call(&Client{BaseURL: srv.URL, HTTP: srv.Client()}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// StatusError.Error() is what a user sees on stderr for every non-2xx, so its
+// exact text is pinned: the server's message, a status-text fallback for an
+// empty body, and a cap so a proxy's HTML error page can't flood the terminal.
+func TestStatusError_ErrorText(t *testing.T) {
+	huge := strings.Repeat("x", maxErrorBody+1000)
+	tests := []struct {
+		name string
+		code int
+		body string
+		want string
+	}{
+		{"json body", http.StatusBadRequest, `{"message":"Missing album identifier"}` + "\n", `/x: HTTP 400: {"message":"Missing album identifier"}`},
+		{"empty body", http.StatusServiceUnavailable, "", "/x: HTTP 503: Service Unavailable"},
+		{"oversized body", http.StatusBadGateway, huge, "/x: HTTP 502: " + huge[:maxErrorBody]},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.code)
+				w.Write([]byte(tt.body))
+			}))
+			defer srv.Close()
+			c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+			_, getErr := c.getRaw(context.Background(), "/x", nil)
+			_, postErr := c.postRaw(context.Background(), "/x", map[string]int{})
+			for method, err := range map[string]error{"GET": getErr, "POST": postErr} {
+				var se *StatusError
+				if !errors.As(err, &se) {
+					t.Fatalf("%s err = %v, want *StatusError", method, err)
+				}
+				if got := se.Error(); got != tt.want {
+					t.Errorf("%s Error() = %.80q (len %d), want %.80q (len %d)", method, got, len(got), tt.want, len(tt.want))
+				}
+			}
+		})
 	}
 }

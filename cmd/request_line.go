@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -108,15 +107,10 @@ func onAirError(err error) error {
 // showEditError turns PATCH /flowsheet/shows/{id}'s mayEditShow refusals into
 // one line, keeping the *api.StatusError in the chain for mapExit.
 func showEditError(err error) error {
-	var se *api.StatusError
-	if !errors.As(err, &se) {
+	se, body, ok := refusal(err)
+	if !ok {
 		return err
 	}
-	var body struct {
-		Message string `json:"message"`
-		Code    string `json:"code"`
-	}
-	_ = json.Unmarshal([]byte(se.Body), &body)
 	switch {
 	case se.Code == http.StatusForbidden && body.Code == "closed_show":
 		return &oneLineError{msg: "this show has ended; only a music director or station manager can change it", err: err}

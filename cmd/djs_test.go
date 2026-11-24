@@ -1,20 +1,14 @@
 package cmd
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-)
 
-// jwtWithSub builds an unsigned JWT whose payload carries sub, enough for the
-// CLI's claim-reading path (it never verifies the signature).
-func jwtWithSub(sub string) string {
-	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"` + sub + `"}`))
-	return "x." + payload + ".y"
-}
+	"github.com/WXYC/wxyc-cli/internal/testutil"
+)
 
 func TestPlaylists_DefaultsToOwnDJID(t *testing.T) {
 	var gotQuery string
@@ -24,7 +18,7 @@ func TestPlaylists_DefaultsToOwnDJID(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv("WXYC_API_URL", srv.URL)
-	t.Setenv("WXYC_JWT", jwtWithSub("me123"))
+	t.Setenv("WXYC_JWT", testutil.FakeJWT("me123"))
 
 	if _, err := runCLI(t, "djs", "playlists"); err != nil {
 		t.Fatal(err)

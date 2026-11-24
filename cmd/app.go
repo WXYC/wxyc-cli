@@ -5,12 +5,13 @@ import (
 	"net/http"
 	"time"
 
+	"io"
+
 	"github.com/WXYC/wxyc-cli/internal/api"
 	"github.com/WXYC/wxyc-cli/internal/auth"
 	"github.com/WXYC/wxyc-cli/internal/config"
 	"github.com/WXYC/wxyc-cli/internal/output"
 	"github.com/WXYC/wxyc-cli/internal/safety"
-	"io"
 )
 
 // App holds the wired-up dependencies for a single CLI invocation. It is

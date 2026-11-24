@@ -56,12 +56,14 @@ exchange, transport, session store). `internal/safety` (write gate) and
   here via `errors.As`/`errors.Is`.
 - **`internal/api`** — `Client` wraps `http.Client` (which already carries the
   auth `Transport`, so this layer never touches tokens itself). Two access
-  patterns per read endpoint, both used together: `get`/`getInto` decode into
+  patterns per read endpoint, both used together: `getInto` decodes into
   a typed struct for the table view, while `getRaw` returns the response body
   verbatim for `--json` passthrough — the same request backs both, so the two
-  views can't drift and no server field is ever silently dropped. `post` is
-  used by mutating endpoints (e.g. `BinAdd`). Non-2xx responses become
-  `StatusError{Code, Path, Body}`.
+  views can't drift and no server field is ever silently dropped. Every
+  request — `getRaw`, `deleteQueryRaw`, and the JSON-body `postRaw`/
+  `patchRaw`/`deleteRaw` — is a one-liner over a single `do`, which sets the
+  JSON headers, validates the body, and turns non-2xx into
+  `StatusError{Code, Path, Body}` (body capped at `maxErrorBody`).
 - **`internal/auth`** — `Store` (interface) persists only a long-lived
   *session* token, never the password: `KeyringStore` (OS keychain) with
   `FileStore` (0600 file) fallback when no keychain is usable
@@ -110,7 +112,9 @@ exchange, transport, session store). `internal/safety` (write gate) and
   `WXYC_*` vars, `WXYC_API_URL` defaults to a trap server that fails the test
   on any request, and the session store is a temp-dir `FileStore` (never the
   OS keychain). Set only what a test needs with `t.Setenv`; use `runApp` with
-  `newTestApp` to override `getenv`/`newStore` directly. Bad-input tests must
+  `newTestApp` to override `getenv`/`newStore` directly. Shared helpers live
+  in `internal/testutil`: `FakeJWT` and `CaptureServer`, which records the
+  last write and fails the test if a request lacks the JSON headers. Bad-input tests must
   assert the specific error text, not just `err != nil`. Table-driven where
   useful but not forced.
 - **Red-green TDD, always** — including bug fixes. Write (or amend) the test

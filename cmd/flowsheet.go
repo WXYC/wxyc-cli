@@ -236,15 +236,10 @@ func spotlightLabel(name, role string) string {
 // spotlightError turns the server's refusals into one readable line while
 // keeping the *api.StatusError in the chain, so mapExit still classifies it.
 func spotlightError(err error) error {
-	var se *api.StatusError
-	if !errors.As(err, &se) {
+	se, body, ok := refusal(err)
+	if !ok {
 		return err
 	}
-	var body struct {
-		Message string `json:"message"`
-		Code    string `json:"code"`
-	}
-	_ = json.Unmarshal([]byte(se.Body), &body)
 	switch {
 	case se.Code == http.StatusForbidden && body.Code == "spotlight_disabled":
 		return &oneLineError{msg: "who's on air is not turned on yet", err: err}
@@ -254,6 +249,22 @@ func spotlightError(err error) error {
 		return &oneLineError{msg: body.Message, err: err}
 	}
 	return err
+}
+
+// refusalBody is the {message, code} JSON the backend sends with a refusal.
+type refusalBody struct {
+	Message string `json:"message"`
+	Code    string `json:"code"`
+}
+
+// refusal finds the *api.StatusError in err's chain and parses its body; ok is
+// false when err isn't a StatusError. A body that isn't JSON leaves body empty.
+func refusal(err error) (se *api.StatusError, body refusalBody, ok bool) {
+	if !errors.As(err, &se) {
+		return nil, body, false
+	}
+	_ = json.Unmarshal([]byte(se.Body), &body)
+	return se, body, true
 }
 
 // oneLineError replaces a wrapped error's text with a short message but still

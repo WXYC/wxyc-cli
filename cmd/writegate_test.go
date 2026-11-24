@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/WXYC/wxyc-cli/internal/safety"
+	"github.com/WXYC/wxyc-cli/internal/testutil"
 	"github.com/spf13/cobra"
 )
 
@@ -80,7 +81,7 @@ func TestWriteGate_BlocksEveryMutatingCommand(t *testing.T) {
 			}))
 			defer srv.Close()
 			t.Setenv("WXYC_API_URL", srv.URL)
-			t.Setenv("WXYC_JWT", fakeJWT("dj-42"))
+			t.Setenv("WXYC_JWT", testutil.FakeJWT("dj-42"))
 
 			args := append(strings.Fields(path), tc.args...)
 			_, err := runCLI(t, args...)
@@ -127,7 +128,7 @@ func TestWriteGate_GatedCommandArgsAreValid(t *testing.T) {
 			}))
 			defer srv.Close()
 			t.Setenv("WXYC_API_URL", srv.URL)
-			t.Setenv("WXYC_JWT", fakeJWT("dj-42"))
+			t.Setenv("WXYC_JWT", testutil.FakeJWT("dj-42"))
 
 			args := append(append(strings.Fields(path), tc.args...), "--write")
 			runCLI(t, args...) // the teapot response errors; only sending the write matters
