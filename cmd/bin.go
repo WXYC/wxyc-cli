@@ -10,7 +10,7 @@ import (
 
 func newBinCmd(app *App) *cobra.Command {
 	bin := &cobra.Command{Use: "bin", Short: "The DJ mail bin"}
-	bin.AddCommand(newBinListCmd(app), newBinAddCmd(app))
+	bin.AddCommand(newBinListCmd(app), newBinAddCmd(app), newBinRmCmd(app))
 	return bin
 }
 
@@ -46,6 +46,33 @@ func newBinAddCmd(app *App) *cobra.Command {
 			}
 			fmt.Fprintf(app.stdout, "added album %d to bin\n", id)
 			return nil
+		},
+	}
+}
+
+func newBinRmCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "rm <album_id>",
+		Short: "Remove an album from your bin",
+		Args:  cobra.ExactArgs(1),
+		// Mutating: the root PersistentPreRunE blocks this unless writes are unlocked.
+		Annotations: map[string]string{annMutates: "true", annOp: "bin:rm"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("album_id must be an integer: %q", args[0])
+			}
+			e, raw, err := app.client.BinRemove(cmd.Context(), id)
+			if err != nil {
+				return err
+			}
+			track := ""
+			if e.TrackTitle != nil {
+				track = *e.TrackTitle
+			}
+			return app.render.EmitRaw(raw,
+				[]string{"BIN_ENTRY_ID", "ALBUM_ID", "TRACK_TITLE", "STATUS"},
+				[][]string{{strconv.Itoa(e.ID), strconv.Itoa(e.AlbumID), track, "removed"}})
 		},
 	}
 }
