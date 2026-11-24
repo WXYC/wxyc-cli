@@ -94,7 +94,8 @@ exchange, transport, session store). `internal/safety` (write gate) and
   `map[string]any` in `cmd/library.go`). Table mode truncates any cell over
   `maxCellWidth` (48 runes) so one long value can't blow out column widths for
   every row — this only affects the table, never `--json`.
-  `EmitRawBlocks` draws a table-mode result as several `Block`s — `Table`
+  `EmitRawTables` draws a table-mode result as several `Table`s (e.g.
+  `library artist`'s card plus releases), and `EmitRawBlocks` draws a table-mode result as several `Block`s — `Table`
   (optionally titled), `Text` (prose printed whole with its line breaks, for
   e.g. a review too long for a cell) and `Note` (one line) — while `--json`
   still passes the raw bytes through.
@@ -125,7 +126,8 @@ exchange, transport, session store). `internal/safety` (write gate) and
   on any request, and the session store is a temp-dir `FileStore` (never the
   OS keychain). Set only what a test needs with `t.Setenv`; use `runApp` with
   `newTestApp` to override `getenv`/`newStore` directly (and `stdin`/
-  `readPassword` for `login`). `execute(ctx, app, args)` is `Execute` minus
+  `readPassword` for `login`, `loc`/`now` to pin the zone and clock that
+  bare dates and `today`/`now` resolve against). `execute(ctx, app, args)` is `Execute` minus
   the process wiring; test the `error: …` line and exit codes through it. Shared helpers live
   in `internal/testutil`: `FakeJWT` and `CaptureServer`, which records the
   last write and fails the test if a request lacks the JSON headers. Bad-input tests must
