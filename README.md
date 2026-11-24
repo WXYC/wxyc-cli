@@ -88,7 +88,7 @@ Commands marked **[write]** mutate station state and require `--write` (or
 | `wxyc flowsheet spotlight --role <role> <name>` | **[write]** Record who is on air in the open show. `--role` is one of `performer`, `dj`, `reader`, `guest`, `host`; the name is 1 to 128 characters. The name is public: it shows in the listener apps, on the Lock Screen and in the public playlist archive, so a `dj` entry takes the name the DJ uses on air. |
 | `wxyc flowsheet request-line <mode>` | **[write]** Choose what the listener request line is for during the open show: `requests`, `feedback` (Messages only), `closed`, or `default` (back to the show's usual setting). The choice lasts for this show only. Prints the effective mode and its source; `--json` prints the server's `on_air` object. |
 | `wxyc flowsheet move <entry_id> <new_position>` | **[write]** Reorder an entry to a new 1-based position. |
-| `wxyc flowsheet edit <entry_id> [field flags…]` | **[write]** Edit fields of an entry. Accepts the same field flags as `add` plus `--message` (for marker rows); only flags you pass are changed, and `--flag ""` clears a field. |
+| `wxyc flowsheet edit <entry_id> [field flags…]` | **[write]** Edit fields of an entry. Accepts the same field flags as `add` plus `--message` (for marker rows) and `--spotlight-role`/`--spotlight-name` (for spotlight rows, same rules as `spotlight`); only flags you pass are changed, and `--flag ""` clears a field. |
 | `wxyc flowsheet rm <entry_id>` | **[write]** Remove an entry. |
 | `wxyc flowsheet end` | **[write]** End your show, or leave the active show as co-host. |
 
