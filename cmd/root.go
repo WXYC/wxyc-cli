@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/WXYC/wxyc-cli/internal/auth"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +29,7 @@ func newRoot(app *App) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			app.build(os.Getenv, profile, jsonOut, allowWrite)
+			app.build(profile, jsonOut, allowWrite)
 			// Enforce the client-side write gate before any command runs.
 			mutates := cmd.Annotations[annMutates] == "true"
 			return app.gate.Authorize(cmd.Annotations[annOp], mutates)
@@ -54,7 +55,12 @@ func newRoot(app *App) *cobra.Command {
 
 // Execute runs the CLI and returns a process exit code.
 func Execute() int {
-	app := &App{stdout: os.Stdout, stderr: os.Stderr}
+	app := &App{
+		getenv:   os.Getenv,
+		newStore: auth.NewStore,
+		stdout:   os.Stdout,
+		stderr:   os.Stderr,
+	}
 	root := newRoot(app)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)

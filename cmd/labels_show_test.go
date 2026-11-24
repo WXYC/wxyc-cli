@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -92,7 +93,8 @@ func TestLabelsShow_NotFoundIsExitNotFound(t *testing.T) {
 
 func TestLabelsShow_RejectsNonIntegerID(t *testing.T) {
 	t.Setenv("WXYC_JWT", "unused")
-	if _, err := runCLI(t, "labels", "show", "abc"); err == nil {
-		t.Error("non-integer label id accepted")
+	_, err := runCLI(t, "labels", "show", "abc")
+	if err == nil || !strings.Contains(err.Error(), "label id must be an integer") {
+		t.Errorf("err = %v, want label id integer error", err)
 	}
 }
