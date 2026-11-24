@@ -78,7 +78,9 @@ func (a *App) build(profile string, jsonOut, allowWrite bool) {
 		a.token = a.provider.Token
 	}
 
-	refresh := a.token
+	// A static JWT has nothing to refresh to; a nil Refresh makes the
+	// transport return a 401 instead of retrying with the same token.
+	var refresh func(context.Context) (string, error)
 	if a.provider != nil {
 		refresh = a.provider.Refresh
 	}

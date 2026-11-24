@@ -13,7 +13,8 @@ import (
 // forget to authenticate or mishandle an expired token.
 //
 // Token and Refresh match TokenProvider.Token / TokenProvider.Refresh, so a
-// provider wires straight in.
+// provider wires straight in. A nil Refresh means the token is static: a 401
+// is returned as-is, since retrying would resend the same token.
 //
 // AttemptTimeout, when non-zero, bounds each HTTP attempt — from sending the
 // request to closing the response body — but not the token fetch before it,
@@ -40,7 +41,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	res, err := t.attempt(cloneWithAuth(req, tok))
-	if err != nil || res.StatusCode != http.StatusUnauthorized {
+	if err != nil || res.StatusCode != http.StatusUnauthorized || !t.canRetry(req) {
 		return res, err
 	}
 
@@ -56,6 +57,16 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	return t.attempt(cloneWithAuth(retry, tok))
+}
+
+// canRetry reports whether a 401 on req can be retried: there must be a way
+// to get a different token, and any body must be replayable, since the first
+// attempt consumed it.
+func (t *Transport) canRetry(req *http.Request) bool {
+	if t.Refresh == nil {
+		return false
+	}
+	return req.Body == nil || req.Body == http.NoBody || req.GetBody != nil
 }
 
 // attempt sends one request under AttemptTimeout. The deadline stays in force
@@ -93,9 +104,9 @@ func cloneWithAuth(req *http.Request, token string) *http.Request {
 }
 
 // rewind returns a request whose body is reset to the start, using GetBody when
-// the original carried a replayable body.
+// the original carried a body. canRetry guarantees GetBody is set if needed.
 func rewind(req *http.Request) (*http.Request, error) {
-	if req.Body == nil || req.GetBody == nil {
+	if req.GetBody == nil {
 		return req, nil
 	}
 	body, err := req.GetBody()
