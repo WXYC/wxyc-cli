@@ -37,3 +37,17 @@ func TestRenderer_EmitRaw_TableUsesProjection(t *testing.T) {
 		t.Errorf("table missing projected row:\n%s", got)
 	}
 }
+
+// In JSON mode a body that isn't valid JSON (e.g. truncated) must be an error,
+// not passed through with exit 0.
+func TestRenderer_EmitRaw_JSONRejectsInvalidJSON(t *testing.T) {
+	var buf bytes.Buffer
+	r := Renderer{JSON: true, Out: &buf}
+	err := r.EmitRaw([]byte(`[{"artist_name":"X","rot`), nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "response is not valid JSON") {
+		t.Fatalf("EmitRaw() err = %v, want a 'response is not valid JSON' error", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("wrote partial output %q", buf.String())
+	}
+}

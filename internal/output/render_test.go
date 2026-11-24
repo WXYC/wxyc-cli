@@ -134,3 +134,38 @@ func TestRenderer_EmitRawTables_JSONPassesRawThrough(t *testing.T) {
 		t.Errorf("json = %s (err %v)", buf.String(), err)
 	}
 }
+
+// DJ-entered text must not be able to forge table rows/columns or smuggle
+// terminal escape sequences into the table view.
+func TestRenderer_Table_SanitizesControlCharacters(t *testing.T) {
+	var buf bytes.Buffer
+	r := Renderer{Out: &buf}
+	rows := [][]string{{"Evil\nFAKE\tROW\tHERE", "Red \x1b[31mAlbum\r"}}
+	if err := r.Emit(nil, []string{"ARTIST", "ALBUM"}, rows); err != nil {
+		t.Fatal(err)
+	}
+	got := buf.String()
+	if lines := strings.Count(got, "\n"); lines != 2 {
+		t.Errorf("table has %d lines, want 2 (header + one row):\n%q", lines, got)
+	}
+	if strings.ContainsRune(got, '\x1b') || strings.ContainsRune(got, '\r') {
+		t.Errorf("control characters reached output: %q", got)
+	}
+	for _, want := range []string{"Evil FAKE ROW HERE", "Red �[31mAlbum"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q: %q", want, got)
+		}
+	}
+}
+
+// --json must stay byte-faithful: sanitizing is table-only.
+func TestRenderer_EmitRaw_JSONNotSanitized(t *testing.T) {
+	var buf bytes.Buffer
+	r := Renderer{JSON: true, Out: &buf}
+	if err := r.EmitRaw([]byte(`{"a":"x\ny\u001b"}`), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `"x\ny\u001b"`) {
+		t.Errorf("JSON altered: %s", buf.String())
+	}
+}

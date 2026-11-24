@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 
 	"github.com/WXYC/wxyc-cli/internal/auth"
 	"github.com/spf13/cobra"
@@ -61,10 +63,19 @@ func Execute() int {
 		stdout:   os.Stdout,
 		stderr:   os.Stderr,
 	}
-	root := newRoot(app)
-	if err := root.Execute(); err != nil {
+	// Ctrl-C cancels the root context, aborting any in-flight request.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	if err := run(ctx, app, os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return mapExit(err)
 	}
 	return ExitOK
+}
+
+// run executes the command tree for args on app.
+func run(ctx context.Context, app *App, args []string) error {
+	root := newRoot(app)
+	root.SetArgs(args)
+	return root.ExecuteContext(ctx)
 }

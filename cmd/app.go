@@ -24,6 +24,8 @@ type App struct {
 	// sessionStore) so that commands that never touch the store — anything
 	// run with WXYC_JWT — don't probe the OS keychain.
 	newStore func() auth.Store
+	// authTimeout bounds each token exchange; zero means defaultAuthTimeout.
+	authTimeout time.Duration
 
 	cfg      config.Config
 	gate     safety.Gate
@@ -35,6 +37,11 @@ type App struct {
 	stdout   io.Writer
 	stderr   io.Writer
 }
+
+// defaultAuthTimeout bounds a token exchange. Commands like whoami fetch a
+// token directly, outside the API client's own timeout, so the provider's
+// client needs its own.
+const defaultAuthTimeout = 30 * time.Second
 
 // build assembles the App from resolved flags and the environment.
 func (a *App) build(profile string, jsonOut, allowWrite bool) {
@@ -52,9 +59,13 @@ func (a *App) build(profile string, jsonOut, allowWrite bool) {
 	if jwt := getenv("WXYC_JWT"); jwt != "" {
 		a.token = func(context.Context) (string, error) { return jwt, nil }
 	} else {
+		authTimeout := a.authTimeout
+		if authTimeout == 0 {
+			authTimeout = defaultAuthTimeout
+		}
 		a.provider = &auth.TokenProvider{
 			AuthBase: a.cfg.AuthBase,
-			HTTP:     http.DefaultClient,
+			HTTP:     &http.Client{Timeout: authTimeout},
 			Session:  func() (string, error) { return a.sessionStore().Load(a.cfg.Profile) },
 			Skew:     30 * time.Second,
 		}

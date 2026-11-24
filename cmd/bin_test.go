@@ -66,3 +66,24 @@ func TestBinRm_RejectsNonIntegerID(t *testing.T) {
 		t.Errorf("err = %v, want album_id integer error", err)
 	}
 }
+
+// A 2xx whose body is cut off mid-stream must not be reported as "not in your
+// bin": the delete may well have happened.
+func TestBinRm_TruncatedBodyIsNotNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"album_id":45029,`))
+	}))
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	_, err := runCLI(t, "bin", "rm", "45029", "--write")
+	if err == nil || !strings.Contains(err.Error(), "unexpected EOF") {
+		t.Fatalf("err = %v, want an unexpected EOF read error", err)
+	}
+	if code := mapExit(err); code == ExitNotFound {
+		t.Errorf("exit = %d (not found), want a non-not-found failure", code)
+	}
+}

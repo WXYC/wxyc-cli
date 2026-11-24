@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -67,5 +68,37 @@ func TestClient_Get_MapsStatusToError(t *testing.T) {
 			t.Errorf("StatusError.Code = %d, want %d", se.Code, tt.code)
 		}
 		srv.Close()
+	}
+}
+
+// truncatingServer declares a 100-byte body, sends fewer bytes, then hangs up,
+// mimicking a connection dropped mid-response on a 2xx.
+func truncatingServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":45029,"artist`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestClient_QueryRaw_TruncatedBodyIsError(t *testing.T) {
+	srv := truncatingServer(t)
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	raw, err := c.deleteQueryRaw(context.Background(), "/djs/bin", map[string]string{"album_id": "45029"})
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("deleteQueryRaw() = %q, %v; want io.ErrUnexpectedEOF", raw, err)
+	}
+}
+
+func TestClient_BodyRaw_TruncatedBodyIsError(t *testing.T) {
+	srv := truncatingServer(t)
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	raw, err := c.postRaw(context.Background(), "/flowsheet/", map[string]any{"x": 1})
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("postRaw() = %q, %v; want io.ErrUnexpectedEOF", raw, err)
 	}
 }

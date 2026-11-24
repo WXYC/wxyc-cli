@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
+	"unicode"
 )
 
 // Renderer emits a result in the configured format. Commands supply both a
@@ -38,9 +40,9 @@ func (r Renderer) EmitRaw(raw []byte, headers []string, rows [][]string) error {
 	}
 	var buf bytes.Buffer
 	if err := json.Indent(&buf, raw, "", "  "); err != nil {
-		// Not indentable (unexpected content type) — emit as received.
-		_, err := r.Out.Write(raw)
-		return err
+		// Truncated or non-JSON: fail rather than hand a script partial
+		// output with exit 0.
+		return fmt.Errorf("response is not valid JSON: %w", err)
 	}
 	buf.WriteByte('\n')
 	_, err := r.Out.Write(buf.Bytes())
@@ -65,9 +67,26 @@ func writeRow(w io.Writer, cells []string) {
 		if i > 0 {
 			fmt.Fprint(w, "\t")
 		}
-		fmt.Fprint(w, truncate(c))
+		fmt.Fprint(w, truncate(sanitize(c)))
 	}
 	fmt.Fprintln(w)
+}
+
+// sanitize makes a cell safe for the table: tabs and newlines (which would
+// forge columns and rows in the tabwriter) become spaces, and any other
+// control character (e.g. ESC starting a terminal escape sequence) becomes
+// U+FFFD. Cell text is partly DJ-entered, so it is untrusted. --json is never
+// sanitized.
+func sanitize(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' {
+			return ' '
+		}
+		if unicode.IsControl(r) {
+			return '\uFFFD'
+		}
+		return r
+	}, s)
 }
 
 // maxCellWidth caps a table cell's display width. tabwriter pads every cell in
