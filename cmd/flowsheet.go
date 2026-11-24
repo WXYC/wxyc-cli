@@ -14,6 +14,7 @@ func newFlowsheetCmd(app *App) *cobra.Command {
 	fs := &cobra.Command{Use: "flowsheet", Short: "Read and manage the on-air flowsheet log"}
 	fs.AddCommand(
 		newFlowsheetTailCmd(app),
+		newFlowsheetNowCmd(app),
 		newFlowsheetShowCmd(app),
 		newFlowsheetStartCmd(app),
 		newFlowsheetAddCmd(app),
@@ -338,6 +339,84 @@ func newFlowsheetTailCmd(app *App) *cobra.Command {
 	}
 	cmd.Flags().IntVarP(&n, "limit", "n", 10, "number of entries")
 	return cmd
+}
+
+func newFlowsheetNowCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "now",
+		Short: "Who is on air, the current show and the last track",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			now, err := app.client.NowPlaying(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return app.render.EmitRaw(now.Raw, []string{"FIELD", "VALUE"}, nowPlayingRows(now))
+		},
+	}
+}
+
+func nowPlayingRows(now api.NowPlaying) [][]string {
+	state := "unknown"
+	switch now.State {
+	case api.OnAirAuto:
+		state = "Auto DJ"
+	case api.OnAirLive:
+		state = "live"
+	}
+
+	djs := make([]string, 0, len(now.DJs))
+	for _, dj := range now.DJs {
+		switch {
+		case dj.DJName != nil && *dj.DJName != "":
+			djs = append(djs, *dj.DJName)
+		case dj.ID != nil && *dj.ID != "":
+			djs = append(djs, *dj.ID)
+		default:
+			djs = append(djs, "unknown")
+		}
+	}
+	djText := "-"
+	if len(djs) > 0 {
+		djText = strings.Join(djs, ", ")
+	}
+
+	show, specialty, requestLine, spotlight := "-", "-", "-", "-"
+	if now.OnAir != nil {
+		if now.OnAir.ShowName != nil && *now.OnAir.ShowName != "" {
+			show = *now.OnAir.ShowName
+		}
+		if now.OnAir.Specialty != nil {
+			specialty = now.OnAir.Specialty.Name
+		}
+		if now.OnAir.RequestLine != nil {
+			requestLine = now.OnAir.RequestLine.Mode + " (" + now.OnAir.RequestLine.Source + ")"
+		}
+		if now.OnAir.Spotlight != nil {
+			spotlight = now.OnAir.Spotlight.SpotlightName
+			if spotlight == "" {
+				spotlight = now.OnAir.Spotlight.Message
+			}
+		}
+	}
+
+	lastTrack := "-"
+	if now.LastTrack != nil {
+		lastTrack = strings.TrimSpace(now.LastTrack.ArtistName + " — " + now.LastTrack.TrackTitle)
+		if now.LastTrack.AlbumTitle != "" {
+			lastTrack += " (" + now.LastTrack.AlbumTitle + ")"
+		}
+	}
+
+	return [][]string{
+		{"STATE", state},
+		{"DJS", djText},
+		{"SHOW", show},
+		{"SPECIALTY", specialty},
+		{"REQUEST LINE", requestLine},
+		{"SPOTLIGHT", spotlight},
+		{"LAST TRACK", lastTrack},
+	}
 }
 
 func newFlowsheetShowCmd(app *App) *cobra.Command {

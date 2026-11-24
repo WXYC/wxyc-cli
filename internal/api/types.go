@@ -248,3 +248,67 @@ type SpecialtyShow struct {
 	Name   string `json:"name"`
 	Active bool   `json:"active"`
 }
+
+// OnAirState distinguishes the three shapes of GET /flowsheet's on_air field.
+type OnAirState string
+
+const (
+	OnAirLive    OnAirState = "live"
+	OnAirAuto    OnAirState = "auto"
+	OnAirUnknown OnAirState = "unknown"
+)
+
+// OnAirDJ is one on-air handle. ID is null for a legacy DJ with no account;
+// DJName is null when the handle filters away.
+type OnAirDJ struct {
+	ID     *string `json:"id"`
+	DJName *string `json:"dj_name"`
+}
+
+// OnAirSpecialty is the embedded specialty-program reference on the on-air show.
+type OnAirSpecialty struct {
+	ID        int     `json:"id"`
+	Slug      string  `json:"slug"`
+	Name      string  `json:"name"`
+	ShortName string  `json:"short_name"`
+	Tagline   *string `json:"tagline"`
+}
+
+// OnAirRequestLine is what the listener request line is for and where the
+// choice came from.
+type OnAirRequestLine struct {
+	Mode   string `json:"mode"`
+	Source string `json:"source"`
+}
+
+// OnAirSpotlight is the open show's current spotlight entry.
+type OnAirSpotlight struct {
+	ID            int    `json:"id"`
+	ShowID        int    `json:"show_id"`
+	PlayOrder     int    `json:"play_order"`
+	AddTime       string `json:"add_time"`
+	EntryType     string `json:"entry_type"`
+	SpotlightRole string `json:"spotlight_role"`
+	SpotlightName string `json:"spotlight_name"`
+	Message       string `json:"message"`
+}
+
+// OnAirInfo is the open show's on-air object from GET /flowsheet.
+type OnAirInfo struct {
+	DJName      string            `json:"dj_name"`
+	ShowID      int               `json:"show_id"`
+	ShowName    *string           `json:"show_name"`
+	Specialty   *OnAirSpecialty   `json:"specialty"`
+	RequestLine *OnAirRequestLine `json:"request_line"`
+	Spotlight   *OnAirSpotlight   `json:"spotlight"`
+}
+
+// NowPlaying is the composed answer for `flowsheet now`: the on-air state, the
+// DJs on air, the last track entry and the combined raw bodies for --json.
+type NowPlaying struct {
+	State     OnAirState
+	OnAir     *OnAirInfo
+	DJs       []OnAirDJ
+	LastTrack *FlowsheetEntry
+	Raw       []byte
+}
