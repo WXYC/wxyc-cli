@@ -135,3 +135,61 @@ func TestReadCommand_NeedsNoUnlock(t *testing.T) {
 		t.Errorf("json output missing entry:\n%s", out)
 	}
 }
+
+// GET /library/ rejects n outside 1..100 with a 400 (Backend-Service
+// parseCountQueryParam, SEARCH_COUNT_MAX). The CLI must refuse locally rather
+// than send n=101.
+func TestLibrarySearch_LimitAboveMaxRefusedBeforeRequest(t *testing.T) {
+	for _, n := range []string{"101", "-1"} {
+		t.Run(n, func(t *testing.T) {
+			var hits int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&hits, 1)
+				if r.URL.Query().Get("n") == n {
+					w.WriteHeader(http.StatusBadRequest)
+					w.Write([]byte(`{"message":"n must be an integer from 1 to 100"}`))
+					return
+				}
+				w.Write([]byte(`[]`))
+			}))
+			defer srv.Close()
+			t.Setenv("WXYC_API_URL", srv.URL)
+			t.Setenv("WXYC_JWT", "unused")
+
+			_, err := runCLI(t, "library", "search", "--artist", "dave", "-n", n)
+			if err == nil || !strings.Contains(err.Error(), "--limit must be from 1 to 100") {
+				t.Errorf("err = %v, want local --limit range error", err)
+			}
+			if hits != 0 {
+				t.Errorf("server hit %d times, want 0", hits)
+			}
+		})
+	}
+}
+
+func TestLibrarySearch_LimitInRangeSentAsIs(t *testing.T) {
+	for _, tc := range []struct{ arg, want string }{{"100", "100"}, {"1", "1"}, {"0", ""}} {
+		t.Run(tc.arg, func(t *testing.T) {
+			var got string
+			var present bool
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = r.URL.Query().Get("n")
+				present = r.URL.Query().Has("n")
+				w.Write([]byte(`[{"id":1,"artist_name":"Dave","album_title":"Wax","format_name":"vinyl","genre_name":"Jazz"}]`))
+			}))
+			defer srv.Close()
+			t.Setenv("WXYC_API_URL", srv.URL)
+			t.Setenv("WXYC_JWT", "unused")
+
+			if _, err := runCLI(t, "library", "search", "--artist", "dave", "-n", tc.arg); err != nil {
+				t.Fatal(err)
+			}
+			if tc.want == "" && present {
+				t.Errorf("n=%q sent, want omitted", got)
+			}
+			if got != tc.want {
+				t.Errorf("n = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

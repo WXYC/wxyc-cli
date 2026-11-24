@@ -108,6 +108,10 @@ func field(m map[string]any, key string) string {
 	}
 }
 
+// librarySearchMax mirrors the backend's SEARCH_COUNT_MAX: GET /library/
+// rejects any n outside 1..100 with a 400 (parseCountQueryParam).
+const librarySearchMax = 100
+
 func newLibrarySearchCmd(app *App) *cobra.Command {
 	var artist, album string
 	var n int
@@ -116,6 +120,9 @@ func newLibrarySearchCmd(app *App) *cobra.Command {
 		Short: "Search the catalog by artist and/or album",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if n < 0 || n > librarySearchMax {
+				return fmt.Errorf("--limit must be from 1 to %d (or 0 for the server default), got %d", librarySearchMax, n)
+			}
 			params := map[string]string{}
 			if artist != "" {
 				params["artist_name"] = artist
@@ -135,7 +142,7 @@ func newLibrarySearchCmd(app *App) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&artist, "artist", "", "artist name")
 	cmd.Flags().StringVar(&album, "album", "", "album title")
-	cmd.Flags().IntVarP(&n, "limit", "n", 0, "max results")
+	cmd.Flags().IntVarP(&n, "limit", "n", 0, fmt.Sprintf("max results, 1 to %d (0 = server default); larger values are refused", librarySearchMax))
 	return cmd
 }
 
