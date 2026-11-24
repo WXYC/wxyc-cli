@@ -64,10 +64,12 @@ type FileStore struct {
 
 // ValidateProfile refuses a profile name that isn't a plain file name. The
 // file store keeps a profile's token at Dir/<profile>.token, so a name with a
-// separator or ".." could reach outside Dir; it is refused, never cleaned.
+// separator could reach outside Dir; it is refused, never cleaned. "." and
+// ".." read as paths and are refused too. Dots elsewhere ("stage..2") are
+// fine: without a separator the name stays inside Dir.
 func ValidateProfile(profile string) error {
-	if profile == "" || strings.ContainsAny(profile, `/\`) || strings.Contains(profile, "..") {
-		return fmt.Errorf("invalid profile name %q: it can't be empty or contain a slash, backslash or \"..\"", profile)
+	if profile == "" || profile == "." || profile == ".." || strings.ContainsAny(profile, `/\`) {
+		return fmt.Errorf("invalid profile name %q: it can't be empty, \".\" or \"..\", or contain a slash or backslash", profile)
 	}
 	return nil
 }
@@ -88,21 +90,26 @@ func (f FileStore) Save(profile, token string) error {
 	if err := os.MkdirAll(f.Dir, 0o700); err != nil {
 		return err
 	}
-	file, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	// Write a new file and rename it over the token path. The rename
+	// replaces a symlink there rather than writing through it, and a save
+	// that fails partway leaves the previous token in place.
+	tmp, err := os.CreateTemp(f.Dir, ".token-*") // created 0600
 	if err != nil {
 		return err
 	}
-	// The create mode only applies to a new file, so tighten an existing one
-	// left looser before the token goes into it.
-	if err := file.Chmod(0o600); err != nil {
-		file.Close()
+	defer os.Remove(tmp.Name()) // no-op once renamed
+	if _, err := tmp.WriteString(token); err != nil {
+		tmp.Close()
 		return err
 	}
-	if _, err := file.WriteString(token); err != nil {
-		file.Close()
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
 		return err
 	}
-	return file.Close()
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), p)
 }
 
 func (f FileStore) Load(profile string) (string, error) {

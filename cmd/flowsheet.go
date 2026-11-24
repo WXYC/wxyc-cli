@@ -350,9 +350,15 @@ func newFlowsheetEditCmd(app *App) *cobra.Command {
 				data.Message, changed = &message, true
 			}
 			if f.Changed("album-id") {
+				if albumID < 0 {
+					return fmt.Errorf("--album-id must be a positive id, got %d", albumID)
+				}
 				data.AlbumID, changed = &albumID, true
 			}
 			if f.Changed("rotation-id") {
+				if rotationID < 0 {
+					return fmt.Errorf("--rotation-id must be a positive id, got %d", rotationID)
+				}
 				data.RotationID, changed = &rotationID, true
 			}
 			if f.Changed("segue") {

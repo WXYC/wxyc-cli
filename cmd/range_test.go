@@ -120,7 +120,7 @@ func rangeServer(t *testing.T, query *url.Values, hits *int32) {
 }
 
 // zonedApp is a test App whose local zone and clock are pinned. They live on
-// the App, not in package state, so tests that pin them can run in parallel.
+// the App, not in package state, so pinning them never leaks between tests.
 func zonedApp(t *testing.T, loc *time.Location, now time.Time) *App {
 	t.Helper()
 	app := newTestApp(t)

@@ -481,3 +481,33 @@ func TestRoot_RejectsPathProfile(t *testing.T) {
 		t.Errorf("WXYC_PROFILE=a/b: err = %v, want an invalid profile error", err)
 	}
 }
+
+// The write gate runs before the profile check: a blocked write exits 2
+// (write blocked) whatever the profile, so a script keyed on that code
+// isn't told something else.
+func TestRoot_BlockedWriteWithBadProfileExitsBlocked(t *testing.T) {
+	t.Setenv("WXYC_JWT", "unused")
+	t.Setenv("WXYC_PROFILE", "a/b")
+	app := newTestApp(t)
+	var out, errbuf bytes.Buffer
+	app.stdout, app.stderr = &out, &errbuf
+	if code := execute(context.Background(), app, []string{"bin", "add", "5"}); code != ExitBlocked {
+		t.Errorf("exit = %d, want %d (stderr %q)", code, ExitBlocked, errbuf.String())
+	}
+}
+
+// An App built without a zone or clock (any entry point other than Execute)
+// falls back to the system's rather than panicking on first use.
+func TestBuild_DefaultsZoneAndClock(t *testing.T) {
+	app := &App{getenv: func(string) string { return "" }}
+	app.build("", false, false)
+	if app.loc != time.Local {
+		t.Errorf("loc = %v, want time.Local", app.loc)
+	}
+	if app.now == nil {
+		t.Fatal("now = nil, want time.Now")
+	}
+	if d := time.Since(app.now()); d < 0 || d > time.Minute {
+		t.Errorf("now() is %v off the system clock", d)
+	}
+}

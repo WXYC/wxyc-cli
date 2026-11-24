@@ -662,6 +662,20 @@ func TestFlowsheetAdd_RejectsNegativeIDs(t *testing.T) {
 	}
 }
 
+// edit refuses a negative id the same way add does, sending nothing.
+func TestFlowsheetEdit_RejectsNegativeIDs(t *testing.T) {
+	t.Setenv("WXYC_JWT", "unused")
+	for _, tc := range []struct{ flag, want string }{
+		{"--album-id", "--album-id must be a positive id, got -1"},
+		{"--rotation-id", "--rotation-id must be a positive id, got -1"},
+	} {
+		_, err := runCLI(t, "flowsheet", "edit", "123", tc.flag, "-1", "--write")
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s -1: err = %v, want %q", tc.flag, err, tc.want)
+		}
+	}
+}
+
 // -n below 1 would otherwise be passed along and silently replaced by the
 // server's default; refuse it instead, sending nothing.
 func TestFlowsheetTail_RejectsLimitBelowOne(t *testing.T) {

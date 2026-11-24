@@ -42,7 +42,7 @@ type App struct {
 	readPassword func(context.Context) ([]byte, error)
 	// loc and now are the local zone and clock that bare dates, zoneless
 	// times and today/yesterday/now resolve against. Execute wires the
-	// system's; tests pin them per App.
+	// system's (and build defaults to it when unset); tests pin them per App.
 	loc *time.Location
 	now func() time.Time
 }
@@ -67,6 +67,12 @@ func (a *App) build(profile string, jsonOut, allowWrite bool) {
 	}
 	a.gate = safety.Gate{AllowWrite: allowWrite || getenv("WXYC_ALLOW_WRITE") == "1"}
 	a.render = output.Renderer{JSON: jsonOut, Out: a.stdout}
+	if a.loc == nil {
+		a.loc = time.Local
+	}
+	if a.now == nil {
+		a.now = time.Now
+	}
 
 	// Token source: a static WXYC_JWT (for agents/CI that manage their own
 	// tokens) short-circuits the session exchange; otherwise the provider
