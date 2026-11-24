@@ -89,6 +89,7 @@ Commands marked **[write]** mutate station state and require `--write` (or
 |---------|-------------|
 | `wxyc bin list` | List albums in your bin. |
 | `wxyc bin add <album_id>` | **[write]** Add an album to your bin. |
+| `wxyc bin rm <album_id>` | **[write]** Remove an album from your bin. Exits 5 if it wasn't in the bin. |
 
 ### `djs` — DJ playlists
 
@@ -126,7 +127,7 @@ export WXYC_JWT="$(...)"          # used verbatim; no login/keychain needed
 
 ## Read-only by default
 
-Mutating commands (`bin add` and the `flowsheet` write commands) are blocked
+Mutating commands (`bin add`, `bin rm` and the `flowsheet` write commands) are blocked
 unless you explicitly unlock writes:
 
 ```sh

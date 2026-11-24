@@ -200,6 +200,14 @@ type BinItem struct {
 	CodeLetters string `json:"code_letters"`
 }
 
+// BinEntry is a raw row of the bins table, as echoed by DELETE /djs/bin.
+type BinEntry struct {
+	ID         int     `json:"id"`
+	DJID       string  `json:"dj_id"`
+	AlbumID    int     `json:"album_id"`
+	TrackTitle *string `json:"track_title"`
+}
+
 // Genre is a row from the genres catalog.
 type Genre struct {
 	ID          int     `json:"id"`

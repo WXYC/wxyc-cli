@@ -32,6 +32,9 @@ func mapExit(err error) int {
 	if errors.Is(err, auth.ErrNoSession) || errors.Is(err, auth.ErrSessionExpired) {
 		return ExitAuth
 	}
+	if errors.Is(err, api.ErrNotInBin) {
+		return ExitNotFound
+	}
 	var se *api.StatusError
 	if errors.As(err, &se) {
 		switch se.Code {

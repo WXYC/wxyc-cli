@@ -64,6 +64,20 @@ func (c *Client) get(ctx context.Context, path string, query map[string]string, 
 // getRaw is like get but returns the response body verbatim, for endpoints
 // whose full shape the CLI passes through to --json without modeling it.
 func (c *Client) getRaw(ctx context.Context, path string, query map[string]string) ([]byte, error) {
+	return c.queryRaw(ctx, http.MethodGet, path, query)
+}
+
+// deleteQueryRaw sends a body-less DELETE with its parameters in the query
+// string, for endpoints that read req.query (e.g. DELETE /djs/bin), unlike
+// deleteRaw which sends a JSON body.
+func (c *Client) deleteQueryRaw(ctx context.Context, path string, query map[string]string) ([]byte, error) {
+	return c.queryRaw(ctx, http.MethodDelete, path, query)
+}
+
+// queryRaw is the shared implementation behind getRaw/deleteQueryRaw: a
+// body-less request with query parameters, returning the response body
+// verbatim. Non-2xx becomes a StatusError.
+func (c *Client) queryRaw(ctx context.Context, method, path string, query map[string]string) ([]byte, error) {
 	u := c.BaseURL + path
 	if len(query) > 0 {
 		vals := url.Values{}
@@ -73,7 +87,7 @@ func (c *Client) getRaw(ctx context.Context, path string, query map[string]strin
 		u += "?" + vals.Encode()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, method, u, nil)
 	if err != nil {
 		return nil, err
 	}
