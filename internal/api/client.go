@@ -76,31 +76,16 @@ func (c *Client) getRaw(ctx context.Context, path string, query map[string]strin
 
 // deleteQueryRaw sends a body-less DELETE with its parameters in the query
 // string, for endpoints that read req.query (e.g. DELETE /djs/bin), unlike
-// deleteRaw which sends a JSON body.
+// DELETE /flowsheet, which reads a JSON body (see FlowsheetDelete).
 func (c *Client) deleteQueryRaw(ctx context.Context, path string, query map[string]string) ([]byte, error) {
 	return c.do(ctx, http.MethodDelete, path, query, nil)
 }
 
-// postRaw sends a JSON body to path and returns the response body verbatim,
-// for mutating endpoints whose echoed entity the CLI both decodes (for a table
-// confirmation) and passes through to --json.
-func (c *Client) postRaw(ctx context.Context, path string, in any) ([]byte, error) {
-	return c.do(ctx, http.MethodPost, path, nil, in)
-}
-
 // patchRaw sends a JSON body to path via PATCH and returns the response body
-// verbatim, mirroring postRaw. Used by the mutating flowsheet endpoints that
-// update or reorder an entry and echo the projected row.
+// verbatim, for a write whose echo the CLI passes through without modeling
+// (e.g. PATCH /flowsheet/shows/{id}).
 func (c *Client) patchRaw(ctx context.Context, path string, in any) ([]byte, error) {
 	return c.do(ctx, http.MethodPatch, path, nil, in)
-}
-
-// deleteRaw sends a JSON body to path via DELETE and returns the response body
-// verbatim. DELETE-with-body is unusual but the backend reads req.body.entry_id;
-// http.NewRequestWithContext derives GetBody from the *bytes.Reader, so the auth
-// Transport's 401-retry rewind still works.
-func (c *Client) deleteRaw(ctx context.Context, path string, in any) ([]byte, error) {
-	return c.do(ctx, http.MethodDelete, path, nil, in)
 }
 
 // do is the request path behind every method above that wants the response
@@ -160,6 +145,9 @@ func (c *Client) send(ctx context.Context, method, path string, query map[string
 		}
 		reqBody = bytes.NewReader(b)
 	}
+	// NewRequestWithContext derives GetBody from the *bytes.Reader, so the auth
+	// Transport's 401-retry can rewind the body — including on DELETE /flowsheet,
+	// which unusually reads its entry_id from a DELETE body.
 	req, err := http.NewRequestWithContext(ctx, method, u, reqBody)
 	if err != nil {
 		return nil, err

@@ -100,9 +100,9 @@ func TestClient_QueryRaw_TruncatedBodyIsError(t *testing.T) {
 func TestClient_BodyRaw_TruncatedBodyIsError(t *testing.T) {
 	srv := truncatingServer(t)
 	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
-	raw, err := c.postRaw(context.Background(), "/flowsheet/", map[string]any{"x": 1})
+	raw, err := c.do(context.Background(), http.MethodPost, "/flowsheet/", nil, map[string]any{"x": 1})
 	if !errors.Is(err, io.ErrUnexpectedEOF) {
-		t.Fatalf("postRaw() = %q, %v; want io.ErrUnexpectedEOF", raw, err)
+		t.Fatalf("do(POST) = %q, %v; want io.ErrUnexpectedEOF", raw, err)
 	}
 }
 
@@ -119,9 +119,9 @@ func TestClient_Raw_InvalidJSONNamesPath(t *testing.T) {
 		!strings.Contains(err.Error(), "/library/rotation: response is not valid JSON") {
 		t.Errorf("getRaw() err = %v, want a '/library/rotation: response is not valid JSON' error", err)
 	}
-	if _, err := c.postRaw(context.Background(), "/flowsheet", map[string]any{}); err == nil ||
+	if _, err := c.do(context.Background(), http.MethodPost, "/flowsheet", nil, map[string]any{}); err == nil ||
 		!strings.Contains(err.Error(), "/flowsheet: response is not valid JSON") {
-		t.Errorf("postRaw() err = %v, want a '/flowsheet: response is not valid JSON' error", err)
+		t.Errorf("do(POST) err = %v, want a '/flowsheet: response is not valid JSON' error", err)
 	}
 }
 
@@ -156,9 +156,15 @@ func TestClient_SendsJSONHeaders(t *testing.T) {
 			_, err := c.deleteQueryRaw(ctx, "/x", map[string]string{"a": "1"})
 			return err
 		}},
-		{"postRaw", http.MethodPost, true, func(c *Client) error { _, err := c.postRaw(ctx, "/x", map[string]int{"a": 1}); return err }},
+		{"do POST", http.MethodPost, true, func(c *Client) error {
+			_, err := c.do(ctx, http.MethodPost, "/x", nil, map[string]int{"a": 1})
+			return err
+		}},
 		{"patchRaw", http.MethodPatch, true, func(c *Client) error { _, err := c.patchRaw(ctx, "/x", map[string]int{"a": 1}); return err }},
-		{"deleteRaw", http.MethodDelete, true, func(c *Client) error { _, err := c.deleteRaw(ctx, "/x", map[string]int{"a": 1}); return err }},
+		{"do DELETE with body", http.MethodDelete, true, func(c *Client) error {
+			_, err := c.do(ctx, http.MethodDelete, "/x", nil, map[string]int{"a": 1})
+			return err
+		}},
 		{"BinAdd", http.MethodPost, true, func(c *Client) error { return c.BinAdd(ctx, 45029) }},
 	}
 	for _, tt := range tests {
@@ -215,7 +221,7 @@ func TestStatusError_ErrorText(t *testing.T) {
 			defer srv.Close()
 			c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
 			_, getErr := c.getRaw(context.Background(), "/x", nil)
-			_, postErr := c.postRaw(context.Background(), "/x", map[string]int{})
+			_, postErr := c.do(context.Background(), http.MethodPost, "/x", nil, map[string]int{})
 			for method, err := range map[string]error{"GET": getErr, "POST": postErr} {
 				var se *StatusError
 				if !errors.As(err, &se) {
