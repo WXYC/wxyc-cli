@@ -18,6 +18,7 @@ wxyc login                       # prompts for email/username + password (hidden
 wxyc whoami                      # shows your identity and role
 
 wxyc library search --artist "aphex twin"
+wxyc library show 45029           # album detail + play counts
 wxyc library genres
 wxyc library formats
 wxyc library rotation            # --json keeps the full nested shape
@@ -62,6 +63,7 @@ Commands marked **[write]** mutate station state and require `--write` (or
 | Command | Description |
 |---------|-------------|
 | `wxyc library search [--artist <name>] [--album <title>] [--on-streaming[=false]] [-n <limit>]` | Search the catalog by artist, album, and/or streaming availability. |
+| `wxyc library show <album_id>` | Show an album's catalog record and its flowsheet plays by arm (direct, rotation, legacy; never summed). `--json` emits `{"album": <GET /library/info>, "play_counts": <GET /library/{id}/flowsheet-play-counts>}`, both bodies verbatim. |
 | `wxyc library genres` | List the genre catalog. |
 | `wxyc library formats` | List the media formats. |
 | `wxyc library rotation` | Show the current rotation. `--json` keeps the full nested shape. |
