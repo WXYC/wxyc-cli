@@ -229,6 +229,20 @@ type PlaylistDJ struct {
 	DJName string `json:"dj_name"`
 }
 
+// FlowsheetRangeShow is a show that intersects a /flowsheet/range window.
+type FlowsheetRangeShow struct {
+	ID        int    `json:"id"`
+	ShowName  string `json:"show_name,omitempty"`
+	StartTime string `json:"start_time,omitempty"`
+	EndTime   string `json:"end_time,omitempty"`
+}
+
+// FlowsheetRangeResponse is the envelope of GET /flowsheet/range.
+type FlowsheetRangeResponse struct {
+	Shows   []FlowsheetRangeShow `json:"shows"`
+	Entries []FlowsheetEntry     `json:"entries"`
+}
+
 // ScheduleEntry is one recurring show slot. Day is 0-6.
 type ScheduleEntry struct {
 	ID            int     `json:"id"`

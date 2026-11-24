@@ -25,3 +25,14 @@ func (c *Client) Flowsheet(ctx context.Context, limit int) ([]FlowsheetEntry, []
 	raw, err := c.getInto(ctx, "/flowsheet", q, &resp)
 	return resp.Entries, raw, err
 }
+
+// FlowsheetRange reads the public flowsheet in the half-open window
+// [startMs, endMs). The server caps the window at eight days.
+func (c *Client) FlowsheetRange(ctx context.Context, startMs, endMs int64) (FlowsheetRangeResponse, []byte, error) {
+	var resp FlowsheetRangeResponse
+	raw, err := c.getInto(ctx, "/flowsheet/range", map[string]string{
+		"start": strconv.FormatInt(startMs, 10),
+		"end":   strconv.FormatInt(endMs, 10),
+	}, &resp)
+	return resp, raw, err
+}

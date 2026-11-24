@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/WXYC/wxyc-cli/internal/api"
 	"github.com/spf13/cobra"
@@ -14,6 +15,7 @@ func newFlowsheetCmd(app *App) *cobra.Command {
 	fs := &cobra.Command{Use: "flowsheet", Short: "Read and manage the on-air flowsheet log"}
 	fs.AddCommand(
 		newFlowsheetTailCmd(app),
+		newFlowsheetRangeCmd(app),
 		newFlowsheetShowCmd(app),
 		newFlowsheetStartCmd(app),
 		newFlowsheetAddCmd(app),
@@ -337,6 +339,67 @@ func newFlowsheetTailCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVarP(&n, "limit", "n", 10, "number of entries")
+	return cmd
+}
+
+const maxRange = 8 * 24 * time.Hour
+
+// parseWindowTime accepts RFC 3339 or a bare date. A bare date means that
+// whole day in local time; for an end bound it means the next midnight, so the
+// half-open window includes the named day.
+func parseWindowTime(value string, end bool) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339, value); err == nil {
+		return t, nil
+	}
+	day, err := time.ParseInLocation("2006-01-02", value, time.Local)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("time must be RFC 3339 or YYYY-MM-DD, got %q", value)
+	}
+	if end {
+		day = day.AddDate(0, 0, 1)
+	}
+	return day, nil
+}
+
+func newFlowsheetRangeCmd(app *App) *cobra.Command {
+	var since, until string
+	cmd := &cobra.Command{
+		Use:   "range",
+		Short: "Read entries in a time window",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if since == "" || until == "" {
+				return fmt.Errorf("--since and --until are required")
+			}
+			start, err := parseWindowTime(since, false)
+			if err != nil {
+				return err
+			}
+			end, err := parseWindowTime(until, true)
+			if err != nil {
+				return err
+			}
+			if !end.After(start) {
+				return fmt.Errorf("--until must be after --since")
+			}
+			if end.Sub(start) > maxRange {
+				return fmt.Errorf("the window must not exceed 8 days")
+			}
+			resp, raw, err := app.client.FlowsheetRange(cmd.Context(), start.UnixMilli(), end.UnixMilli())
+			if err != nil {
+				return err
+			}
+			rows := make([][]string, 0, len(resp.Entries))
+			for _, e := range resp.Entries {
+				rows = append(rows, []string{
+					strconv.Itoa(e.ShowID), e.EntryType, e.ArtistName, e.TrackTitle, e.AlbumTitle,
+				})
+			}
+			return app.render.EmitRaw(raw, []string{"SHOW", "TYPE", "ARTIST", "TRACK", "ALBUM"}, rows)
+		},
+	}
+	cmd.Flags().StringVar(&since, "since", "", "window start: RFC 3339 or YYYY-MM-DD (whole day, local time)")
+	cmd.Flags().StringVar(&until, "until", "", "window end: RFC 3339 or YYYY-MM-DD (whole day, local time)")
 	return cmd
 }
 
