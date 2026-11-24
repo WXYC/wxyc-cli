@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 )
 
 // Each write method returns the decoded echo (for the table confirmation) and
@@ -83,4 +84,12 @@ func decodeFlowsheetResult(raw []byte, err error) (FlowsheetResult, []byte, erro
 		return FlowsheetResult{}, raw, fmt.Errorf("decoding flowsheet response: %w", err)
 	}
 	return e, raw, nil
+}
+
+// ShowSetRequestMode sets the show's request-line mode (requests, feedback or
+// closed); nil sends request_mode: null, returning the show to its program's
+// default. Mutating: gated behind --write. The server applies mayEditShow: a
+// non-member of the open show gets a 400, and an ended show a 403 closed_show.
+func (c *Client) ShowSetRequestMode(ctx context.Context, showID int, mode *string) ([]byte, error) {
+	return c.patchRaw(ctx, "/flowsheet/shows/"+strconv.Itoa(showID), showRequestModePatch{RequestMode: mode})
 }

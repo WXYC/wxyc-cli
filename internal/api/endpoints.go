@@ -2,6 +2,9 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"strconv"
 )
 
@@ -24,4 +27,32 @@ func (c *Client) Flowsheet(ctx context.Context, limit int) ([]FlowsheetEntry, []
 	var resp flowsheetResponse
 	raw, err := c.getInto(ctx, "/flowsheet", q, &resp)
 	return resp.Entries, raw, err
+}
+
+// ErrNoOpenShow is GET /flowsheet's on_air: null — automation, no show open.
+var ErrNoOpenShow = errors.New("no show is on the air")
+
+// ErrOnAirUnknown is an absent on_air: the server could not resolve it.
+var ErrOnAirUnknown = errors.New("the server could not say which show is on the air")
+
+// FlowsheetOnAir reads the on_air banner from GET /flowsheet, returning it
+// decoded and as the server's raw on_air object for --json passthrough.
+func (c *Client) FlowsheetOnAir(ctx context.Context) (OnAir, []byte, error) {
+	var resp struct {
+		OnAir json.RawMessage `json:"on_air"`
+	}
+	if _, err := c.getInto(ctx, "/flowsheet", map[string]string{"limit": "1"}, &resp); err != nil {
+		return OnAir{}, nil, err
+	}
+	switch {
+	case len(resp.OnAir) == 0:
+		return OnAir{}, nil, ErrOnAirUnknown
+	case string(resp.OnAir) == "null":
+		return OnAir{}, nil, ErrNoOpenShow
+	}
+	var o OnAir
+	if err := json.Unmarshal(resp.OnAir, &o); err != nil {
+		return OnAir{}, nil, fmt.Errorf("decoding on_air: %w", err)
+	}
+	return o, resp.OnAir, nil
 }
