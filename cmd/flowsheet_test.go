@@ -384,3 +384,37 @@ func TestFlowsheetShow_TableIsInPlayOrder(t *testing.T) {
 		t.Errorf("table not in play order (start=%d track=%d end=%d):\n%s", start, track, end, out)
 	}
 }
+
+func TestFlowsheetShow_HeaderShowsDJsSpecialtyAndNeighbours(t *testing.T) {
+	body := `{"id":42,"show_name":"Freeform","specialty":{"id":1,"name":"New Science"},` +
+		`"start_time":"2026-11-24T01:00:00Z","end_time":"2026-11-24T03:00:00Z",` +
+		`"show_djs":[{"id":"dj-1","dj_name":"Ada","active":true},{"id":"dj-2","dj_name":"Ben","active":false}],` +
+		`"previous_show_id":41,"next_show_id":43,"entries":[]}`
+	srv, _ := showServer(t, `[]`, map[string]string{"42": body})
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	out, err := runCLI(t, "flowsheet", "show", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Show: Freeform",
+		"Specialty: New Science",
+		"DJs: Ada, Ben (left)",
+		"Prev: 41 · Next: 43",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("header missing %q:\n%s", want, out)
+		}
+	}
+
+	jsonOut, err := runCLI(t, "--json", "flowsheet", "show", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(jsonOut, "Show: Freeform") {
+		t.Errorf("--json must not print the table header:\n%s", jsonOut)
+	}
+}

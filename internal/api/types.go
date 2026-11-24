@@ -217,10 +217,29 @@ type Playlist struct {
 // /flowsheet/playlist. Only the fields the table renders are modeled; the
 // rest (legacy_dj_name, previous/next_show_id, …) pass through --json.
 type Show struct {
-	ID        int              `json:"id"`
-	StartTime string           `json:"start_time"`
-	EndTime   string           `json:"end_time"`
-	Entries   []FlowsheetEntry `json:"entries"`
+	ID             int              `json:"id"`
+	ShowName       string           `json:"show_name,omitempty"`
+	SpecialtyShow  string           `json:"specialty_show,omitempty"`
+	Specialty      *SpecialtyRef    `json:"specialty,omitempty"`
+	StartTime      string           `json:"start_time"`
+	EndTime        string           `json:"end_time"`
+	ShowDJs        []ShowDJ         `json:"show_djs,omitempty"`
+	PreviousShowID *int             `json:"previous_show_id,omitempty"`
+	NextShowID     *int             `json:"next_show_id,omitempty"`
+	Entries        []FlowsheetEntry `json:"entries"`
+}
+
+// SpecialtyRef is the specialty-program reference embedded in a show.
+type SpecialtyRef struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// ShowDJ is one DJ credited on a show. Active is false after the DJ left.
+type ShowDJ struct {
+	ID     *string `json:"id"`
+	DJName *string `json:"dj_name"`
+	Active bool    `json:"active"`
 }
 
 // PlaylistDJ names one of the DJs credited on a show. DJName may be empty.

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"slices"
 	"strconv"
 	"strings"
@@ -354,9 +355,58 @@ func newFlowsheetShowCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if !app.render.JSON {
+				writeShowHeader(app.stdout, show)
+			}
 			return app.render.EmitRaw(raw, []string{"TYPE", "ARTIST", "TRACK", "ALBUM"}, entryRows(inPlayOrder(show.Entries)))
 		},
 	}
+}
+
+// writeShowHeader prints the show's own metadata above its entries table.
+func writeShowHeader(w io.Writer, show api.Show) {
+	name := show.ShowName
+	if name == "" {
+		name = "-"
+	}
+	specialty := "-"
+	if show.Specialty != nil && show.Specialty.Name != "" {
+		specialty = show.Specialty.Name
+	} else if show.SpecialtyShow != "" {
+		specialty = show.SpecialtyShow
+	}
+	fmt.Fprintf(w, "Show: %s\n", name)
+	fmt.Fprintf(w, "Specialty: %s\n", specialty)
+	fmt.Fprintf(w, "Time: %s - %s\n", show.StartTime, show.EndTime)
+	fmt.Fprintf(w, "DJs: %s\n", showDJNames(show.ShowDJs))
+	fmt.Fprintf(w, "Prev: %s · Next: %s\n\n", showIDString(show.PreviousShowID), showIDString(show.NextShowID))
+}
+
+func showDJNames(djs []api.ShowDJ) string {
+	if len(djs) == 0 {
+		return "-"
+	}
+	names := make([]string, 0, len(djs))
+	for _, dj := range djs {
+		name := "unknown"
+		if dj.DJName != nil && *dj.DJName != "" {
+			name = *dj.DJName
+		} else if dj.ID != nil && *dj.ID != "" {
+			name = *dj.ID
+		}
+		if !dj.Active {
+			name += " (left)"
+		}
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
+}
+
+func showIDString(id *int) string {
+	if id == nil {
+		return "-"
+	}
+	return strconv.Itoa(*id)
 }
 
 // inPlayOrder returns a show's entries sorted first-played first. The server
