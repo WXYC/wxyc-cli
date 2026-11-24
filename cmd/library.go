@@ -13,6 +13,7 @@ func newLibraryCmd(app *App) *cobra.Command {
 	lib := &cobra.Command{Use: "library", Short: "Query the music library catalog"}
 	lib.AddCommand(
 		newLibrarySearchCmd(app),
+		newLibraryShowCmd(app),
 		newGenresCmd(app),
 		newFormatsCmd(app),
 		newRotationCmd(app),
