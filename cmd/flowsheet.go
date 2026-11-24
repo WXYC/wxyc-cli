@@ -17,6 +17,7 @@ import (
 func newFlowsheetCmd(app *App) *cobra.Command {
 	fs := &cobra.Command{Use: "flowsheet", Short: "Read and manage the on-air flowsheet log"}
 	fs.AddCommand(
+		newFlowsheetNowCmd(app),
 		newFlowsheetTailCmd(app),
 		newFlowsheetShowCmd(app),
 		newFlowsheetSearchCmd(app),

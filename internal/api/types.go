@@ -302,12 +302,26 @@ type SpecialtyShow struct {
 	Active bool   `json:"active"`
 }
 
-// OnAir is the on_air object of GET /flowsheet while a show is open. Only the
-// fields the CLI uses are modeled; the rest pass through --json.
+// OnAir is the on_air object of GET /flowsheet while a show is open (the
+// server's OnAirInfo). Only the fields the CLI uses are modeled; the rest pass
+// through --json.
 type OnAir struct {
-	DJName      string       `json:"dj_name"`
-	ShowID      int          `json:"show_id"`
-	RequestLine *RequestLine `json:"request_line"` // nil when the server failed to compute it
+	DJName      string            `json:"dj_name"`
+	ShowID      int               `json:"show_id"`
+	ShowName    *string           `json:"show_name"`    // nil when the show has no title
+	Specialty   *SpecialtyShowRef `json:"specialty"`    // nil for a freeform show
+	RequestLine *RequestLine      `json:"request_line"` // nil when the server failed to compute it
+	// Spotlight is the open show's newest spotlight row: nil when there is
+	// none, when spotlights are off, or when the server failed to read it.
+	Spotlight *FlowsheetEntry `json:"spotlight"`
+}
+
+// SpecialtyShowRef is the specialty program embedded in on_air.
+type SpecialtyShowRef struct {
+	ID        int    `json:"id"`
+	Slug      string `json:"slug"`
+	Name      string `json:"name"`
+	ShortName string `json:"short_name"`
 }
 
 // RequestLine is what the listener request line is for right now: Mode is
