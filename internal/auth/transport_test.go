@@ -189,3 +189,107 @@ func TestTransport_AttemptTimeoutBoundsHangingRequest(t *testing.T) {
 		t.Fatal("hanging request not cut off after AttemptTimeout")
 	}
 }
+
+// A failure to obtain a token (e.g. a dead session) must surface from the
+// request, still classifiable via errors.Is through the *url.Error wrapper.
+func TestTransport_TokenErrorPropagates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("request sent despite Token error")
+	}))
+	defer srv.Close()
+
+	tr := &Transport{
+		Token:   func(context.Context) (string, error) { return "", ErrSessionExpired },
+		Refresh: func(context.Context) (string, error) { return "unused", nil },
+	}
+	_, err := (&http.Client{Transport: tr}).Get(srv.URL)
+	if !errors.Is(err, ErrSessionExpired) {
+		t.Fatalf("err = %v, want it to wrap ErrSessionExpired", err)
+	}
+}
+
+// A failed refresh after a 401 must surface as an error, not as the 401 or a
+// retry with no token.
+func TestTransport_RefreshErrorPropagates(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	tr := &Transport{
+		Token:   func(context.Context) (string, error) { return "stale", nil },
+		Refresh: func(context.Context) (string, error) { return "", ErrSessionExpired },
+	}
+	_, err := (&http.Client{Transport: tr}).Get(srv.URL)
+	if !errors.Is(err, ErrSessionExpired) {
+		t.Fatalf("err = %v, want it to wrap ErrSessionExpired", err)
+	}
+	if hits != 1 {
+		t.Errorf("upstream hits = %d, want 1 (no retry after failed refresh)", hits)
+	}
+}
+
+// A body that can't be replayed (no GetBody) was consumed by the first
+// attempt, so retrying would send an empty or truncated body. The transport
+// must return the 401 instead of retrying.
+func TestTransport_NoRetryWithoutReplayableBody(t *testing.T) {
+	var hits, refreshes int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	tr := &Transport{
+		Token: func(context.Context) (string, error) { return "old", nil },
+		Refresh: func(context.Context) (string, error) {
+			atomic.AddInt32(&refreshes, 1)
+			return "new", nil
+		},
+	}
+	req, err := http.NewRequest(http.MethodPost, srv.URL, io.NopCloser(strings.NewReader("payload")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.GetBody != nil {
+		t.Fatal("test setup: GetBody should be nil for an opaque body")
+	}
+	res, err := tr.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", res.StatusCode)
+	}
+	if hits != 1 || refreshes != 0 {
+		t.Errorf("hits = %d, refreshes = %d; want 1 and 0 (no retry)", hits, refreshes)
+	}
+}
+
+// With no Refresh (a static token), retrying a 401 would resend the identical
+// token: the transport must return the 401 after one attempt.
+func TestTransport_NilRefreshDoesNotRetry(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	tr := &Transport{Token: func(context.Context) (string, error) { return "static", nil }}
+	res, err := (&http.Client{Transport: tr}).Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", res.StatusCode)
+	}
+	if hits != 1 {
+		t.Errorf("upstream hits = %d, want 1 (no retry without Refresh)", hits)
+	}
+}
