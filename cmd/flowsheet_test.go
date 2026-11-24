@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -382,5 +383,69 @@ func TestFlowsheetShow_TableIsInPlayOrder(t *testing.T) {
 	start, track, end := strings.Index(out, "show_start"), strings.Index(out, "White Fang"), strings.Index(out, "show_end")
 	if !(start < track && track < end) {
 		t.Errorf("table not in play order (start=%d track=%d end=%d):\n%s", start, track, end, out)
+	}
+}
+
+func captureRecentServer(t *testing.T, resp string) (*httptest.Server, *url.Values) {
+	t.Helper()
+	var got url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/flowsheet/shows/recent" {
+			t.Errorf("got %s %s, want GET /flowsheet/shows/recent", r.Method, r.URL.Path)
+		}
+		got = r.URL.Query()
+		w.Write([]byte(resp))
+	}))
+	return srv, &got
+}
+
+func TestFlowsheetRecent_ShowsLegacyAndMissingNames(t *testing.T) {
+	const fixture = `{"shows":[
+		{"id":901,"show_name":"Freeform","start_time":"2026-11-24T01:00:00Z","end_time":null,
+		 "djs":[{"id":"dj-42","dj_name":"DJ Current"}]},
+		{"id":902,"show_name":null,"start_time":"2026-11-23T20:00:00Z","end_time":"2026-11-23T22:00:00Z",
+		 "djs":[{"id":null,"dj_name":"Legacy Handle"},{"id":"dj-7","dj_name":null}]}
+	]}`
+	srv, got := captureRecentServer(t, fixture)
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", fakeJWT("dj-42"))
+
+	out, err := runCLI(t, "flowsheet", "recent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := got.Get("window_hours"); v != "24" {
+		t.Errorf("window_hours = %q, want the 24 default", v)
+	}
+	for _, want := range []string{"901", "902", "Freeform", "DJ Current", "Legacy Handle", "dj-7"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output %q missing %q", out, want)
+		}
+	}
+}
+
+func TestFlowsheetRecent_PassesTheWindow(t *testing.T) {
+	srv, got := captureRecentServer(t, `{"shows":[]}`)
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", fakeJWT("dj-42"))
+
+	if _, err := runCLI(t, "flowsheet", "recent", "--hours", "6"); err != nil {
+		t.Fatal(err)
+	}
+	if v := got.Get("window_hours"); v != "6" {
+		t.Errorf("window_hours = %q, want 6", v)
+	}
+}
+
+func TestFlowsheetRecent_RejectsOutOfRangeWindowLocally(t *testing.T) {
+	t.Setenv("WXYC_JWT", fakeJWT("dj-42"))
+
+	for _, hours := range []string{"0", "169"} {
+		_, err := runCLI(t, "flowsheet", "recent", "--hours", hours)
+		if err == nil || !strings.Contains(err.Error(), "between 1 and 168") {
+			t.Errorf("--hours %s err = %v, want a local range error", hours, err)
+		}
 	}
 }

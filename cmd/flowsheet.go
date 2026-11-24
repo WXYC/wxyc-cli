@@ -14,6 +14,7 @@ func newFlowsheetCmd(app *App) *cobra.Command {
 	fs := &cobra.Command{Use: "flowsheet", Short: "Read and manage the on-air flowsheet log"}
 	fs.AddCommand(
 		newFlowsheetTailCmd(app),
+		newFlowsheetRecentCmd(app),
 		newFlowsheetShowCmd(app),
 		newFlowsheetStartCmd(app),
 		newFlowsheetAddCmd(app),
@@ -338,6 +339,58 @@ func newFlowsheetTailCmd(app *App) *cobra.Command {
 	}
 	cmd.Flags().IntVarP(&n, "limit", "n", 10, "number of entries")
 	return cmd
+}
+
+func newFlowsheetRecentCmd(app *App) *cobra.Command {
+	var hours int
+	cmd := &cobra.Command{
+		Use:   "recent",
+		Short: "Shows that started in the lookback window, newest first",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if hours < 1 || hours > 168 {
+				return fmt.Errorf("--hours must be between 1 and 168, got %d", hours)
+			}
+			shows, raw, err := app.client.RecentShows(cmd.Context(), hours)
+			if err != nil {
+				return err
+			}
+			return app.render.EmitRaw(raw,
+				[]string{"SHOW", "START", "END", "NAME", "DJS"}, recentShowRows(shows))
+		},
+	}
+	cmd.Flags().IntVar(&hours, "hours", 24, "lookback window in hours (1-168)")
+	return cmd
+}
+
+func recentShowRows(shows []api.RecentShow) [][]string {
+	rows := make([][]string, 0, len(shows))
+	for _, s := range shows {
+		name := "-"
+		if s.ShowName != nil && *s.ShowName != "" {
+			name = *s.ShowName
+		}
+		end := "-"
+		if s.EndTime != nil && *s.EndTime != "" {
+			end = *s.EndTime
+		}
+		djs := make([]string, 0, len(s.DJs))
+		for _, dj := range s.DJs {
+			switch {
+			case dj.DJName != nil && *dj.DJName != "":
+				djs = append(djs, *dj.DJName)
+			case dj.ID != nil && *dj.ID != "":
+				djs = append(djs, *dj.ID)
+			default:
+				djs = append(djs, "unknown")
+			}
+		}
+		if len(djs) == 0 {
+			djs = append(djs, "-")
+		}
+		rows = append(rows, []string{strconv.Itoa(s.ID), s.StartTime, end, name, strings.Join(djs, ", ")})
+	}
+	return rows
 }
 
 func newFlowsheetShowCmd(app *App) *cobra.Command {

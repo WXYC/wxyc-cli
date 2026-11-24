@@ -25,3 +25,12 @@ func (c *Client) Flowsheet(ctx context.Context, limit int) ([]FlowsheetEntry, []
 	raw, err := c.getInto(ctx, "/flowsheet", q, &resp)
 	return resp.Entries, raw, err
 }
+
+// RecentShows lists shows that started in the last windowHours hours, newest
+// first. The server accepts only 1-168 and rejects anything else with a 400.
+func (c *Client) RecentShows(ctx context.Context, windowHours int) ([]RecentShow, []byte, error) {
+	var resp recentShowsResponse
+	raw, err := c.getInto(ctx, "/flowsheet/shows/recent",
+		map[string]string{"window_hours": strconv.Itoa(windowHours)}, &resp)
+	return resp.Shows, raw, err
+}

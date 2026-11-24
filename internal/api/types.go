@@ -56,6 +56,28 @@ type flowsheetResponse struct {
 	Entries []FlowsheetEntry `json:"entries"`
 }
 
+// RecentShowDJ is one on-air handle on a recent show. ID is null for a legacy
+// DJ with no account; DJName is null when no handle resolves.
+type RecentShowDJ struct {
+	ID     *string `json:"id"`
+	DJName *string `json:"dj_name"`
+}
+
+// RecentShow is one show from GET /flowsheet/shows/recent. EndTime is null
+// while the show is still on the air (or when its sign-off was lost).
+type RecentShow struct {
+	ID        int            `json:"id"`
+	ShowName  *string        `json:"show_name"`
+	StartTime string         `json:"start_time"`
+	EndTime   *string        `json:"end_time"`
+	DJs       []RecentShowDJ `json:"djs"`
+}
+
+// recentShowsResponse is the envelope the recent-shows endpoint wraps rows in.
+type recentShowsResponse struct {
+	Shows []RecentShow `json:"shows"`
+}
+
 // StartShowRequest is the POST /flowsheet/join body. DJID must match the
 // authenticated user (the backend 403s otherwise); the CLI fills it from the
 // token. When no show is active this starts one; when a show is live it adds
