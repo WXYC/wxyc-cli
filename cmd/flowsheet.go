@@ -147,8 +147,8 @@ func newFlowsheetAddCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&track, "track", "", "track title (required)")
-	cmd.Flags().StringVar(&artist, "artist", "", "artist name")
-	cmd.Flags().StringVar(&album, "album", "", "album title")
+	cmd.Flags().StringVar(&artist, "artist", "", "artist name (required unless --album-id)")
+	cmd.Flags().StringVar(&album, "album", "", "album title (required unless --album-id)")
 	cmd.Flags().StringVar(&label, "label", "", "record label")
 	cmd.Flags().IntVar(&albumID, "album-id", 0, "library album id (backfills artist/album/label)")
 	cmd.Flags().IntVar(&rotationID, "rotation-id", 0, "rotation id")
@@ -480,6 +480,10 @@ func entryResultRows(e api.FlowsheetResult) [][]string {
 	return [][]string{{strconv.Itoa(e.ID), e.EntryType, artist, title}}
 }
 
+// tailMaxLimit mirrors Backend-Service flowsheet.controller.ts MAX_ITEMS: GET
+// /flowsheet refuses a larger limit with a 400.
+const tailMaxLimit = 200
+
 func newFlowsheetTailCmd(app *App) *cobra.Command {
 	var n int
 	cmd := &cobra.Command{
@@ -490,6 +494,9 @@ func newFlowsheetTailCmd(app *App) *cobra.Command {
 			if n < 1 {
 				return fmt.Errorf("--limit must be at least 1, got %d", n)
 			}
+			if n > tailMaxLimit {
+				return fmt.Errorf("--limit must be at most %d, got %d", tailMaxLimit, n)
+			}
 			entries, raw, err := app.client.Flowsheet(cmd.Context(), n)
 			if err != nil {
 				return err
@@ -497,15 +504,19 @@ func newFlowsheetTailCmd(app *App) *cobra.Command {
 			return app.render.EmitRaw(raw, []string{"TYPE", "ARTIST", "TRACK", "ALBUM"}, entryRows(entries))
 		},
 	}
-	cmd.Flags().IntVarP(&n, "limit", "n", 10, "number of entries")
+	cmd.Flags().IntVarP(&n, "limit", "n", 10, fmt.Sprintf("number of entries, 1 to %d", tailMaxLimit))
 	return cmd
 }
 
 func newFlowsheetShowCmd(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <show_id>",
-		Short: "Show every entry of one show (ids from `djs playlists`)",
-		Args:  cobra.ExactArgs(1),
+		Short: "Show every entry of one show",
+		Long: `Show every entry of one show, first played first, under a header with its
+name, program, airtime, DJs and the previous and next show ids. Show ids
+come from "wxyc flowsheet recent", "wxyc flowsheet range" (the SHOW column)
+and "wxyc djs playlists".`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			showID, err := strconv.Atoi(args[0])
 			if err != nil {

@@ -54,6 +54,7 @@ func newBinRmCmd(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "rm <album_id>",
 		Short: "Remove an album from your bin",
+		Long:  `Remove an album from your bin. Exits 5 if the album is not in your bin.`,
 		Args:  cobra.ExactArgs(1),
 		// Mutating: the root PersistentPreRunE blocks this unless writes are unlocked.
 		Annotations: map[string]string{annMutates: "true", annOp: "bin:rm"},

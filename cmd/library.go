@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/WXYC/wxyc-cli/internal/api"
 	"github.com/spf13/cobra"
@@ -128,8 +129,16 @@ func newLibrarySearchCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search",
 		Short: "Search the catalog by artist, album, and/or streaming availability",
-		Args:  cobra.NoArgs,
+		Long: `Search the catalog by artist, album, and/or streaming availability.
+Give at least one of --artist, --album or --on-streaming.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// A blank value is no filter, so trim before checking for one.
+			artist, album := strings.TrimSpace(artist), strings.TrimSpace(album)
+			// The server 400s a search with none of these; fail fast instead.
+			if artist == "" && album == "" && !cmd.Flags().Changed("on-streaming") {
+				return fmt.Errorf("give at least one of --artist, --album or --on-streaming")
+			}
 			if n < 0 || n > librarySearchMax {
 				return fmt.Errorf("--limit must be from 1 to %d (or 0 for the server default), got %d", librarySearchMax, n)
 			}
