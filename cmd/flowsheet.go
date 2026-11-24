@@ -186,12 +186,12 @@ name the DJ uses on air, never a real name.`,
 		// Mutating: the root PersistentPreRunE blocks this unless writes are unlocked.
 		Annotations: map[string]string{annMutates: "true", annOp: "flowsheet:spotlight"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !slices.Contains(spotlightRoles, role) {
-				return fmt.Errorf("--role must be one of: %s", strings.Join(spotlightRoles, ", "))
+			if err := checkSpotlightRole("--role", role); err != nil {
+				return err
 			}
 			name := strings.TrimSpace(strings.Join(args, " "))
-			if n := utf8.RuneCountInString(name); n < 1 || n > spotlightNameMax {
-				return fmt.Errorf("name must be 1 to %d characters, got %d", spotlightNameMax, n)
+			if err := checkSpotlightName("name", name); err != nil {
+				return err
 			}
 			e, raw, err := app.client.FlowsheetAddSpotlight(cmd.Context(), role, name)
 			if err != nil {
@@ -202,6 +202,31 @@ name the DJ uses on air, never a real name.`,
 	}
 	cmd.Flags().StringVar(&role, "role", "", "who is on air: "+strings.Join(spotlightRoles, ", "))
 	return cmd
+}
+
+// checkSpotlightRole refuses a role outside spotlightRoles before any request.
+func checkSpotlightRole(flag, role string) error {
+	if !slices.Contains(spotlightRoles, role) {
+		return fmt.Errorf("%s must be one of: %s", flag, strings.Join(spotlightRoles, ", "))
+	}
+	return nil
+}
+
+// checkSpotlightName refuses a (trimmed) name the server would 400.
+func checkSpotlightName(what, name string) error {
+	if n := utf8.RuneCountInString(name); n < 1 || n > spotlightNameMax {
+		return fmt.Errorf("%s must be 1 to %d characters, got %d", what, spotlightNameMax, n)
+	}
+	return nil
+}
+
+// spotlightLabel is a spotlight row's table cell, e.g. "Jane Doe (guest)". An
+// unrecognized role is shown as-is: the server's role list is open-ended.
+func spotlightLabel(name, role string) string {
+	if role == "" {
+		return name
+	}
+	return name + " (" + role + ")"
 }
 
 // spotlightError turns the server's refusals into one readable line while
@@ -266,7 +291,7 @@ func newFlowsheetMoveCmd(app *App) *cobra.Command {
 }
 
 func newFlowsheetEditCmd(app *App) *cobra.Command {
-	var track, artist, album, label, message string
+	var track, artist, album, label, message, spotRole, spotName string
 	var albumID, rotationID int
 	var segue, request bool
 	cmd := &cobra.Command{
@@ -313,11 +338,28 @@ func newFlowsheetEditCmd(app *App) *cobra.Command {
 			if f.Changed("request") {
 				data.RequestFlag, changed = &request, true
 			}
+			spotlight := false
+			if f.Changed("spotlight-role") {
+				if err := checkSpotlightRole("--spotlight-role", spotRole); err != nil {
+					return err
+				}
+				data.SpotlightRole, changed, spotlight = &spotRole, true, true
+			}
+			if f.Changed("spotlight-name") {
+				spotName = strings.TrimSpace(spotName)
+				if err := checkSpotlightName("--spotlight-name", spotName); err != nil {
+					return err
+				}
+				data.SpotlightName, changed, spotlight = &spotName, true, true
+			}
 			if !changed {
 				return fmt.Errorf("no fields to edit: pass at least one field flag")
 			}
 			e, raw, err := app.client.FlowsheetUpdate(cmd.Context(), entryID, data)
 			if err != nil {
+				if spotlight {
+					return spotlightError(err)
+				}
 				return err
 			}
 			return app.render.EmitRaw(raw, entryHeaders, entryResultRows(e))
@@ -332,6 +374,8 @@ func newFlowsheetEditCmd(app *App) *cobra.Command {
 	cmd.Flags().IntVar(&rotationID, "rotation-id", 0, "rotation id")
 	cmd.Flags().BoolVar(&segue, "segue", false, "mark as a segue into the next track")
 	cmd.Flags().BoolVar(&request, "request", false, "mark as a listener request")
+	cmd.Flags().StringVar(&spotRole, "spotlight-role", "", "spotlight rows only: "+strings.Join(spotlightRoles, ", "))
+	cmd.Flags().StringVar(&spotName, "spotlight-name", "", "spotlight rows only: who is on air, 1 to 128 characters (public)")
 	return cmd
 }
 
@@ -396,7 +440,11 @@ func showRows(s api.ShowSession, solo, cohost string) [][]string {
 // so their message goes in the title column.
 func entryResultRows(e api.FlowsheetResult) [][]string {
 	artist, title := e.ArtistName, e.TrackTitle
-	if e.EntryType != "track" {
+	switch e.EntryType {
+	case "track":
+	case "spotlight":
+		artist, title = spotlightLabel(e.SpotlightName, e.SpotlightRole), e.Message
+	default:
 		artist, title = "", e.Message
 	}
 	return [][]string{{strconv.Itoa(e.ID), e.EntryType, artist, title}}
@@ -451,7 +499,12 @@ func entryRows(entries []api.FlowsheetEntry) [][]string {
 	rows := make([][]string, 0, len(entries))
 	for _, e := range entries {
 		artist, track := e.ArtistName, e.TrackTitle
-		if e.EntryType != "track" {
+		switch e.EntryType {
+		case "track":
+		case "spotlight":
+			// Spotlight rows carry who is on air instead of a DJ name.
+			artist = spotlightLabel(e.SpotlightName, e.SpotlightRole)
+		default:
 			// Marker rows (show_start/end, dj_join/leave) carry the DJ name.
 			artist = e.DJName
 		}

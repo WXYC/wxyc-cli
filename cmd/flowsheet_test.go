@@ -4,9 +4,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -512,5 +514,117 @@ func TestFlowsheetSpotlight_HelpSaysNameIsPublic(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("help missing %q:\n%s", want, out)
 		}
+	}
+}
+
+// spotlightEntry is a spotlight row as GET /flowsheet and /flowsheet/playlist
+// send it (FlowsheetV2SpotlightEntry): no dj_name and no track fields.
+func spotlightEntry(playOrder int, role, name string) string {
+	return fmt.Sprintf(`{"id":%d,"show_id":42,"play_order":%d,"add_time":"2026-11-20T16:05:00.000Z",`+
+		`"entry_type":"spotlight","spotlight_role":%q,"spotlight_name":%q,"message":"In the studio: %s"}`,
+		900+playOrder, playOrder, role, name, name)
+}
+
+func TestFlowsheetTail_ShowsSpotlightNameAndRole(t *testing.T) {
+	body := `{"entries":[` + spotlightEntry(2, "guest", "Jane Doe") + `,` +
+		`{"id":1,"play_order":1,"entry_type":"track","artist_name":"A","track_title":"T","album_title":"Al"}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
+	t.Cleanup(srv.Close)
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	out, err := runCLI(t, "flowsheet", "tail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Jane Doe (guest)") {
+		t.Errorf("table missing spotlight name and role:\n%s", out)
+	}
+}
+
+func TestFlowsheetShow_ShowsSpotlightNameAndRole(t *testing.T) {
+	for _, tc := range []struct{ role, want string }{
+		{"performer", "The Weirs (performer)"},
+		// The role list is open-ended: an unknown role is shown as-is.
+		{"drummer", "The Weirs (drummer)"},
+	} {
+		t.Run(tc.role, func(t *testing.T) {
+			body := `{"id":42,"entries":[` + spotlightEntry(2, tc.role, "The Weirs") + `,` +
+				`{"play_order":1,"entry_type":"show_start","dj_name":"Ryan Shaw"}]}`
+			srv, _ := showServer(t, `[]`, map[string]string{"42": body})
+			t.Cleanup(srv.Close)
+			t.Setenv("WXYC_API_URL", srv.URL)
+			t.Setenv("WXYC_JWT", "unused")
+
+			out, err := runCLI(t, "flowsheet", "show", "42")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("table missing %q:\n%s", tc.want, out)
+			}
+		})
+	}
+}
+
+func TestFlowsheetEdit_SpotlightFieldsBuildPatchData(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want map[string]any
+	}{
+		{"role", []string{"--spotlight-role", "performer"}, map[string]any{"spotlight_role": "performer"}},
+		{"name", []string{"--spotlight-name", "  The Weirs "}, map[string]any{"spotlight_name": "The Weirs"}},
+		{"both", []string{"--spotlight-role", "reader", "--spotlight-name", "Jane Doe"},
+			map[string]any{"spotlight_role": "reader", "spotlight_name": "Jane Doe"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, got := captureFlowsheetServer(t, spotlightEntry(3, "performer", "The Weirs"))
+			t.Setenv("WXYC_API_URL", srv.URL)
+			t.Setenv("WXYC_JWT", "unused")
+
+			out, err := runCLI(t, append([]string{"flowsheet", "edit", "903", "--write"}, tc.args...)...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Method != http.MethodPatch || got.Path != "/flowsheet" || got.Body["entry_id"] != float64(903) {
+				t.Errorf("request = %s %s %v, want PATCH /flowsheet entry_id 903", got.Method, got.Path, got.Body)
+			}
+			if data := got.Body["data"]; !reflect.DeepEqual(data, tc.want) {
+				t.Errorf("data = %v, want exactly %v", data, tc.want)
+			}
+			if !strings.Contains(out, "The Weirs (performer)") {
+				t.Errorf("confirmation missing spotlight name and role:\n%s", out)
+			}
+		})
+	}
+}
+
+func TestFlowsheetEdit_RefusesBadSpotlightInputBeforeRequest(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"unknown role", []string{"--spotlight-role", "drummer"}, "performer, dj, reader, guest, host"},
+		{"empty role", []string{"--spotlight-role", ""}, "performer, dj, reader, guest, host"},
+		{"empty name", []string{"--spotlight-name", "  "}, "1 to 128 characters"},
+		{"129-character name", []string{"--spotlight-name", strings.Repeat("é", 129)}, "1 to 128 characters"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var hits int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++ }))
+			t.Cleanup(srv.Close)
+			t.Setenv("WXYC_API_URL", srv.URL)
+			t.Setenv("WXYC_JWT", "unused")
+
+			_, err := runCLI(t, append([]string{"flowsheet", "edit", "903", "--write"}, tc.args...)...)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want mention of %q", err, tc.want)
+			}
+			if hits != 0 {
+				t.Errorf("server hit %d times, want 0", hits)
+			}
+		})
 	}
 }

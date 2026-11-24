@@ -35,7 +35,8 @@ func (a Album) ShelfCode() string {
 
 // FlowsheetEntry is one row of the on-air log. A row is either a played track
 // (entry_type "track") or a marker (show_start, show_end, dj_join, …). Marker
-// rows leave the track fields empty and carry dj_name.
+// rows leave the track fields empty and carry dj_name. A spotlight row (who is
+// on air) carries spotlight_role and spotlight_name instead, and no dj_name.
 type FlowsheetEntry struct {
 	ID          int    `json:"id"`
 	ShowID      int    `json:"show_id"`
@@ -49,6 +50,10 @@ type FlowsheetEntry struct {
 	RequestFlag bool   `json:"request_flag"`
 	Segue       bool   `json:"segue"`
 	RotationID  *int   `json:"rotation_id"`
+	// SpotlightRole is decoded as a plain string, not an enum: the server's
+	// role list is open-ended and an unknown role must still render.
+	SpotlightRole string `json:"spotlight_role"`
+	SpotlightName string `json:"spotlight_name"`
 }
 
 // flowsheetResponse is the envelope the /flowsheet endpoint wraps entries in.
@@ -124,7 +129,8 @@ func (s ShowSession) EffectiveShowID() int {
 
 // FlowsheetResult is the projected flowsheet row echoed by the mutating
 // /flowsheet endpoints (POST/PATCH/DELETE). Track rows carry the artist/track
-// fields; marker rows carry Message and leave them empty.
+// fields; marker rows carry Message and leave them empty. Spotlight rows also
+// carry SpotlightRole and SpotlightName.
 type FlowsheetResult struct {
 	ID         int    `json:"id"`
 	ShowID     int    `json:"show_id"`
@@ -134,6 +140,9 @@ type FlowsheetResult struct {
 	AlbumTitle string `json:"album_title"`
 	TrackTitle string `json:"track_title"`
 	Message    string `json:"message"`
+
+	SpotlightRole string `json:"spotlight_role"`
+	SpotlightName string `json:"spotlight_name"`
 }
 
 // FlowsheetUpdateFields is the data payload for PATCH /flowsheet. Every field
@@ -156,6 +165,10 @@ type FlowsheetUpdateFields struct {
 	RequestFlag   *bool   `json:"request_flag,omitempty"`
 	Segue         *bool   `json:"segue,omitempty"`
 	Message       *string `json:"message,omitempty"`
+	// SpotlightRole and SpotlightName correct a spotlight row in place; the
+	// server 400s them on a track row.
+	SpotlightRole *string `json:"spotlight_role,omitempty"`
+	SpotlightName *string `json:"spotlight_name,omitempty"`
 }
 
 // flowsheetUpdateRequest is the PATCH /flowsheet body: the target entry id plus
