@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 
@@ -63,14 +65,45 @@ func Execute() int {
 		stdout:   os.Stdout,
 		stderr:   os.Stderr,
 	}
-	// Ctrl-C cancels the root context, aborting any in-flight request.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := interruptContext(context.Background())
 	defer stop()
-	if err := run(ctx, app, os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		return mapExit(err)
+	return report(os.Stderr, run(ctx, app, os.Args[1:]))
+}
+
+// interruptContext returns a context cancelled by the first Ctrl-C, which
+// aborts any in-flight request. The handler is removed as soon as that signal
+// arrives, so a second Ctrl-C gets the default behaviour and kills the
+// process — the only way out of something that ignores the context, such as
+// login's username and password prompts.
+func interruptContext(parent context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(parent)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt)
+	go func() {
+		select {
+		case <-sigs:
+		case <-ctx.Done():
+		}
+		// Restore the default handler before cancelling, so by the time
+		// anything observes the cancellation a second Ctrl-C already kills.
+		signal.Stop(sigs)
+		cancel()
+	}()
+	return ctx, cancel
+}
+
+// report prints err (if any) to w and returns the process exit code. A Ctrl-C
+// prints "interrupted" rather than a "context canceled" error.
+func report(w io.Writer, err error) int {
+	if err == nil {
+		return ExitOK
 	}
-	return ExitOK
+	if errors.Is(err, context.Canceled) {
+		fmt.Fprintln(w, "interrupted")
+	} else {
+		fmt.Fprintln(w, "error:", err)
+	}
+	return mapExit(err)
 }
 
 // run executes the command tree for args on app.

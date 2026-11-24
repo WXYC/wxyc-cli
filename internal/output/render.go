@@ -38,6 +38,10 @@ func (r Renderer) EmitRaw(raw []byte, headers []string, rows [][]string) error {
 	if !r.JSON {
 		return r.table(headers, rows)
 	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		// An empty 2xx body (e.g. 204 No Content): pass through as nothing.
+		return nil
+	}
 	var buf bytes.Buffer
 	if err := json.Indent(&buf, raw, "", "  "); err != nil {
 		// Truncated or non-JSON: fail rather than hand a script partial
@@ -72,15 +76,25 @@ func writeRow(w io.Writer, cells []string) {
 	fmt.Fprintln(w)
 }
 
-// sanitize makes a cell safe for the table: tabs and newlines (which would
-// forge columns and rows in the tabwriter) become spaces, and any other
-// control character (e.g. ESC starting a terminal escape sequence) becomes
-// U+FFFD. Cell text is partly DJ-entered, so it is untrusted. --json is never
+// sanitize makes a cell safe for the table: tabs and line breaks (which would
+// forge columns and rows in the tabwriter), including U+2028/U+2029, become
+// spaces; invisible format characters (Unicode Cf: bidi overrides and
+// isolates, zero-width spaces, BOM), which can reorder how a row displays, are
+// dropped; and any other control character (e.g. ESC starting a terminal
+// escape sequence) becomes U+FFFD. ZWNJ and ZWJ are kept: they are ordinary
+// text in Persian and Indic names and in emoji, and cannot reorder anything.
+// Cell text is partly DJ-entered, so it is untrusted. --json is never
 // sanitized.
 func sanitize(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r == '\t' || r == '\n' || r == '\r' {
+		if r == '\t' || r == '\n' || r == '\r' || r == '\u2028' || r == '\u2029' {
 			return ' '
+		}
+		if r == '\u200C' || r == '\u200D' {
+			return r
+		}
+		if unicode.Is(unicode.Cf, r) {
+			return -1
 		}
 		if unicode.IsControl(r) {
 			return '\uFFFD'

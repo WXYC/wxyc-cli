@@ -417,3 +417,38 @@ func TestRun_ContextCancelAbortsTokenFetch(t *testing.T) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
 }
+
+// An empty 2xx rotation body means nothing is in rotation: an empty table, not
+// a JSON decode error.
+func TestRotation_EmptyBodyIsNoResults(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	t.Setenv("WXYC_API_URL", srv.URL)
+	t.Setenv("WXYC_JWT", "unused")
+
+	out, err := runCLI(t, "library", "rotation")
+	if err != nil || out != "no results\n" {
+		t.Fatalf("rotation = %q, %v; want %q, nil", out, err, "no results\n")
+	}
+}
+
+// The API client must not put one deadline over the whole request: that
+// deadline would include the token exchange (up to authTimeout) and the 401
+// refresh, leaving a slow-but-healthy request no time. Each HTTP attempt is
+// bounded instead.
+func TestApp_RequestTimeoutExcludesTokenExchange(t *testing.T) {
+	app := newTestApp(t)
+	app.build("", false, false)
+	if got := app.client.HTTP.Timeout; got != 0 {
+		t.Errorf("API client whole-request timeout = %v, want none", got)
+	}
+	tr, ok := app.client.HTTP.Transport.(*auth.Transport)
+	if !ok {
+		t.Fatalf("API transport = %T, want *auth.Transport", app.client.HTTP.Transport)
+	}
+	if tr.AttemptTimeout != defaultRequestTimeout || defaultRequestTimeout != 30*time.Second {
+		t.Errorf("AttemptTimeout = %v, want 30s", tr.AttemptTimeout)
+	}
+}

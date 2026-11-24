@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -26,5 +29,30 @@ func TestMapExit_SessionFailuresAreAuth(t *testing.T) {
 				t.Errorf("mapExit(%v) = %d, want ExitAuth(%d)", tc.err, got, ExitAuth)
 			}
 		})
+	}
+}
+
+// A Ctrl-C reaches mapExit as context.Canceled; scripts need to tell a user
+// abort from a failure, so it gets the conventional 128+SIGINT code.
+func TestMapExit_InterruptIs130(t *testing.T) {
+	err := fmt.Errorf(`Get "https://api.wxyc.org/flowsheet": %w`, context.Canceled)
+	if got := mapExit(err); got != ExitInterrupted || ExitInterrupted != 130 {
+		t.Errorf("mapExit(%v) = %d, want 130", err, got)
+	}
+}
+
+func TestReport_InterruptSaysInterrupted(t *testing.T) {
+	var buf bytes.Buffer
+	code := report(&buf, fmt.Errorf("whoami: %w", context.Canceled))
+	if code != 130 || buf.String() != "interrupted\n" {
+		t.Errorf("report() = %d, %q; want 130, %q", code, buf.String(), "interrupted\n")
+	}
+}
+
+func TestReport_ErrorIsPrefixed(t *testing.T) {
+	var buf bytes.Buffer
+	code := report(&buf, errors.New("boom"))
+	if code != ExitError || buf.String() != "error: boom\n" {
+		t.Errorf("report() = %d, %q; want %d, %q", code, buf.String(), ExitError, "error: boom\n")
 	}
 }

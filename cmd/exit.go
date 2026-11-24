@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -12,18 +13,23 @@ import (
 // Exit codes form the CLI's machine-readable contract. An agent can branch on
 // these without parsing stderr.
 const (
-	ExitOK        = 0
-	ExitError     = 1 // unclassified failure
-	ExitBlocked   = 2 // write attempted while read-only (BlockedError)
-	ExitAuth      = 3 // missing session or 401
-	ExitForbidden = 4 // 403: authenticated but role lacks permission
-	ExitNotFound  = 5 // 404
+	ExitOK          = 0
+	ExitError       = 1   // unclassified failure
+	ExitBlocked     = 2   // write attempted while read-only (BlockedError)
+	ExitAuth        = 3   // missing session or 401
+	ExitForbidden   = 4   // 403: authenticated but role lacks permission
+	ExitNotFound    = 5   // 404
+	ExitInterrupted = 130 // Ctrl-C (128 + SIGINT, the shell convention)
 )
 
 // mapExit classifies an error into a process exit code.
 func mapExit(err error) int {
 	if err == nil {
 		return ExitOK
+	}
+	// The root context is cancelled only by Ctrl-C (see interruptContext).
+	if errors.Is(err, context.Canceled) {
+		return ExitInterrupted
 	}
 	var blocked *safety.BlockedError
 	if errors.As(err, &blocked) {

@@ -43,6 +43,12 @@ type App struct {
 // client needs its own.
 const defaultAuthTimeout = 30 * time.Second
 
+// defaultRequestTimeout bounds each HTTP attempt against the API (the request
+// and its 401 retry each get their own), excluding the token exchange, which
+// defaultAuthTimeout bounds separately. A whole-request client timeout would
+// let a slow token exchange eat the request's budget.
+const defaultRequestTimeout = 30 * time.Second
+
 // build assembles the App from resolved flags and the environment.
 func (a *App) build(profile string, jsonOut, allowWrite bool) {
 	getenv := a.getenv
@@ -76,10 +82,10 @@ func (a *App) build(profile string, jsonOut, allowWrite bool) {
 	if a.provider != nil {
 		refresh = a.provider.Refresh
 	}
-	transport := &auth.Transport{Token: a.token, Refresh: refresh}
+	transport := &auth.Transport{Token: a.token, Refresh: refresh, AttemptTimeout: defaultRequestTimeout}
 	a.client = &api.Client{
 		BaseURL: a.cfg.APIBase,
-		HTTP:    &http.Client{Transport: transport, Timeout: 35 * time.Second},
+		HTTP:    &http.Client{Transport: transport},
 	}
 }
 

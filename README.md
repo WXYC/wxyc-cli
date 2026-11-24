@@ -159,6 +159,7 @@ catalog writes regardless — the server returns 403.
 | 3 | not authenticated (no session, or 401) |
 | 4 | forbidden (authenticated, but role lacks permission) |
 | 5 | not found |
+| 130 | interrupted (Ctrl-C) |
 
 ## Configuration
 

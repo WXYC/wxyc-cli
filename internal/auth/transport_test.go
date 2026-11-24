@@ -2,12 +2,14 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestTransport_InjectsBearer(t *testing.T) {
@@ -119,5 +121,71 @@ func TestTransport_ReplaysBodyOnRetry(t *testing.T) {
 	res.Body.Close()
 	if len(bodies) != 2 || bodies[0] != "payload" || bodies[1] != "payload" {
 		t.Errorf("bodies = %v, want both %q", bodies, "payload")
+	}
+}
+
+// AttemptTimeout bounds each request to the API, not the token fetch before
+// it: a slow token exchange must not eat into the request's budget.
+func TestTransport_AttemptTimeoutExcludesTokenFetch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		io.WriteString(w, "ok")
+	}))
+	defer srv.Close()
+
+	tr := &Transport{
+		Token: func(context.Context) (string, error) {
+			time.Sleep(300 * time.Millisecond)
+			return "jwt", nil
+		},
+		Refresh:        func(context.Context) (string, error) { return "jwt", nil },
+		AttemptTimeout: 250 * time.Millisecond,
+	}
+	res, err := (&http.Client{Transport: tr}).Get(srv.URL)
+	if err != nil {
+		t.Fatalf("Get() err = %v, want success", err)
+	}
+	defer res.Body.Close()
+	if b, err := io.ReadAll(res.Body); err != nil || string(b) != "ok" {
+		t.Errorf("body = %q, %v; want %q", b, err, "ok")
+	}
+}
+
+// A request that hangs is cut off after AttemptTimeout, including while the
+// body is still being read.
+func TestTransport_AttemptTimeoutBoundsHangingRequest(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	tr := &Transport{
+		Token:          func(context.Context) (string, error) { return "jwt", nil },
+		Refresh:        func(context.Context) (string, error) { return "jwt", nil },
+		AttemptTimeout: 100 * time.Millisecond,
+	}
+	done := make(chan error, 1)
+	go func() {
+		res, err := (&http.Client{Transport: tr}).Get(srv.URL)
+		if err == nil {
+			_, err = io.ReadAll(res.Body)
+			res.Body.Close()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("err = %v, want context.DeadlineExceeded", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("hanging request not cut off after AttemptTimeout")
 	}
 }

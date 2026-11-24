@@ -51,3 +51,16 @@ func TestRenderer_EmitRaw_JSONRejectsInvalidJSON(t *testing.T) {
 		t.Errorf("wrote partial output %q", buf.String())
 	}
 }
+
+// An empty 2xx body (e.g. a 204) means "no content": --json passes it through
+// as nothing rather than failing, just as it passes everything else verbatim.
+func TestRenderer_EmitRaw_JSONEmptyBodyWritesNothing(t *testing.T) {
+	var buf bytes.Buffer
+	r := Renderer{JSON: true, Out: &buf}
+	if err := r.EmitRaw(nil, nil, nil); err != nil {
+		t.Fatalf("EmitRaw(empty) err = %v, want nil", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("wrote %q, want nothing", buf.String())
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -100,5 +101,38 @@ func TestClient_BodyRaw_TruncatedBodyIsError(t *testing.T) {
 	raw, err := c.postRaw(context.Background(), "/flowsheet/", map[string]any{"x": 1})
 	if !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Fatalf("postRaw() = %q, %v; want io.ErrUnexpectedEOF", raw, err)
+	}
+}
+
+// A 2xx body that isn't JSON must fail naming the endpoint, so the error
+// says where the bad response came from in both --json and table mode.
+func TestClient_Raw_InvalidJSONNamesPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html>502 Bad Gateway</html>`))
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+
+	if _, err := c.getRaw(context.Background(), "/library/rotation", nil); err == nil ||
+		!strings.Contains(err.Error(), "/library/rotation: response is not valid JSON") {
+		t.Errorf("getRaw() err = %v, want a '/library/rotation: response is not valid JSON' error", err)
+	}
+	if _, err := c.postRaw(context.Background(), "/flowsheet", map[string]any{}); err == nil ||
+		!strings.Contains(err.Error(), "/flowsheet: response is not valid JSON") {
+		t.Errorf("postRaw() err = %v, want a '/flowsheet: response is not valid JSON' error", err)
+	}
+}
+
+// The backend answers some endpoints with 204 No Content (e.g. GET
+// /flowsheet/latest on an empty flowsheet); an empty body is not an error.
+func TestClient_Raw_EmptyBodyIsNotAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+	raw, err := c.getRaw(context.Background(), "/flowsheet/latest", nil)
+	if err != nil || len(raw) != 0 {
+		t.Errorf("getRaw() = %q, %v; want empty, nil", raw, err)
 	}
 }

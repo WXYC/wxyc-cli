@@ -154,7 +154,9 @@ func (c *Client) bodyRaw(ctx context.Context, method, path string, in any) ([]by
 
 // readBody reads the whole response body. A non-2xx becomes a StatusError
 // (carrying whatever body arrived); on a 2xx, a failed read — e.g. the
-// connection dropped mid-body — is an error rather than a truncated success.
+// connection dropped mid-body — is an error rather than a truncated success,
+// as is a body that isn't JSON (e.g. a proxy's HTML error page), named by
+// path. An empty body (204 No Content) is returned as is.
 func readBody(res *http.Response, path string) ([]byte, error) {
 	body, err := io.ReadAll(res.Body)
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -162,6 +164,9 @@ func readBody(res *http.Response, path string) ([]byte, error) {
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: reading response: %w", path, err)
+	}
+	if len(bytes.TrimSpace(body)) > 0 && !json.Valid(body) {
+		return nil, fmt.Errorf("%s: response is not valid JSON", path)
 	}
 	return body, nil
 }

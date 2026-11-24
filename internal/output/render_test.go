@@ -169,3 +169,27 @@ func TestRenderer_EmitRaw_JSONNotSanitized(t *testing.T) {
 		t.Errorf("JSON altered: %s", buf.String())
 	}
 }
+
+// Invisible format characters (Unicode Cf) such as bidi overrides can reorder
+// how a row displays, forging a different track or album; U+2028/U+2029 break
+// lines like \n. ZWNJ/ZWJ are kept: they are ordinary text in Persian and
+// Indic names and in emoji sequences, and cannot reorder anything.
+func TestRenderer_Table_SanitizesFormatAndSeparatorCharacters(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"rlo override", "Artist\u202Eemuh", "Artistemuh"},
+		{"bidi isolates", "a\u2066b\u2067c\u2068d\u2069e", "abcde"},
+		{"zero width space", "Zero\u200BWidth", "ZeroWidth"},
+		{"bom", "\uFEFFStart", "Start"},
+		{"line separator", "Line\u2028Break", "Line Break"},
+		{"paragraph separator", "Para\u2029Break", "Para Break"},
+		{"zwnj kept", "می\u200Cخواهم", "می\u200Cخواهم"},
+		{"zwj kept", "👩\u200D🎤", "👩\u200D🎤"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := sanitize(c.in); got != c.want {
+				t.Errorf("sanitize(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
