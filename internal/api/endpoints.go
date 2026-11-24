@@ -9,7 +9,7 @@ import (
 )
 
 // LibrarySearch queries the catalog. Accepted params mirror the backend, e.g.
-// artist_name, album_title, n (page size). Returns the decoded albums and the
+// artist_name, album_title, on_streaming ("true"/"false"), n (page size). Returns the decoded albums and the
 // raw JSON for --json passthrough.
 func (c *Client) LibrarySearch(ctx context.Context, params map[string]string) ([]Album, []byte, error) {
 	var albums []Album

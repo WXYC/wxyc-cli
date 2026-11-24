@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -189,6 +190,47 @@ func TestLibrarySearch_LimitInRangeSentAsIs(t *testing.T) {
 			}
 			if got != tc.want {
 				t.Errorf("n = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// GET /library/ takes on_streaming=true|false and accepts it alone, with no
+// artist_name or album_title (Backend-Service searchForAlbum, #872). Unset
+// must send nothing so the server applies no streaming filter.
+func TestLibrarySearch_OnStreamingQueryString(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		want    string
+		present bool
+	}{
+		{"true", []string{"--on-streaming"}, "true", true},
+		{"explicit true", []string{"--on-streaming=true"}, "true", true},
+		{"false", []string{"--on-streaming=false"}, "false", true},
+		{"unset", []string{"--artist", "dave"}, "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var query url.Values
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				query = r.URL.Query()
+				w.Write([]byte(`[{"id":1,"artist_name":"Dave","album_title":"Wax","format_name":"vinyl","genre_name":"Jazz","on_streaming":false}]`))
+			}))
+			defer srv.Close()
+			t.Setenv("WXYC_API_URL", srv.URL)
+			t.Setenv("WXYC_JWT", "unused")
+
+			if _, err := runCLI(t, append([]string{"library", "search"}, tc.args...)...); err != nil {
+				t.Fatal(err)
+			}
+			if got := query.Has("on_streaming"); got != tc.present {
+				t.Errorf("on_streaming present = %v, want %v (query %q)", got, tc.present, query.Encode())
+			}
+			if got := query.Get("on_streaming"); got != tc.want {
+				t.Errorf("on_streaming = %q, want %q", got, tc.want)
+			}
+			if tc.present && (query.Has("artist_name") || query.Has("album_title")) {
+				t.Errorf("standalone filter sent extra params: %q", query.Encode())
 			}
 		})
 	}
