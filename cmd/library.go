@@ -115,9 +115,10 @@ const librarySearchMax = 100
 func newLibrarySearchCmd(app *App) *cobra.Command {
 	var artist, album string
 	var n int
+	var onStreaming bool
 	cmd := &cobra.Command{
 		Use:   "search",
-		Short: "Search the catalog by artist and/or album",
+		Short: "Search the catalog by artist, album, and/or streaming availability",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if n < 0 || n > librarySearchMax {
@@ -133,6 +134,11 @@ func newLibrarySearchCmd(app *App) *cobra.Command {
 			if n > 0 {
 				params["n"] = strconv.Itoa(n)
 			}
+			// Tri-state: only an explicit --on-streaming[=bool] sends the
+			// filter; unset leaves it off so the server doesn't filter at all.
+			if cmd.Flags().Changed("on-streaming") {
+				params["on_streaming"] = strconv.FormatBool(onStreaming)
+			}
 			albums, raw, err := app.client.LibrarySearch(cmd.Context(), params)
 			if err != nil {
 				return err
@@ -143,6 +149,7 @@ func newLibrarySearchCmd(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&artist, "artist", "", "artist name")
 	cmd.Flags().StringVar(&album, "album", "", "album title")
 	cmd.Flags().IntVarP(&n, "limit", "n", 0, fmt.Sprintf("max results, 1 to %d (0 = server default); larger values are refused", librarySearchMax))
+	cmd.Flags().BoolVar(&onStreaming, "on-streaming", false, "only albums on streaming services; --on-streaming=false for only those not on streaming (unset = no filter; usable without --artist/--album)")
 	return cmd
 }
 

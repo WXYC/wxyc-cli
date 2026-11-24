@@ -61,7 +61,7 @@ Commands marked **[write]** mutate station state and require `--write` (or
 
 | Command | Description |
 |---------|-------------|
-| `wxyc library search [--artist <name>] [--album <title>] [-n <limit>]` | Search the catalog by artist and/or album. |
+| `wxyc library search [--artist <name>] [--album <title>] [--on-streaming[=false]] [-n <limit>]` | Search the catalog by artist, album, and/or streaming availability. |
 | `wxyc library genres` | List the genre catalog. |
 | `wxyc library formats` | List the media formats. |
 | `wxyc library rotation` | Show the current rotation. `--json` keeps the full nested shape. |
