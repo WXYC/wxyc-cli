@@ -39,7 +39,7 @@ type App struct {
 	// stdin supplies login's username line; readPassword reads the password
 	// without echo. Execute wires them to the terminal; tests inject fakes.
 	stdin        io.Reader
-	readPassword func() ([]byte, error)
+	readPassword func(context.Context) ([]byte, error)
 }
 
 // defaultAuthTimeout bounds a token exchange. Commands like whoami fetch a

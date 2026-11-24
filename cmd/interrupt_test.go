@@ -15,8 +15,8 @@ import (
 )
 
 // interruptHelperEnv makes the test binary act as a CLI blocked on something
-// that ignores the context (like login's password prompt). It is not WXYC_*,
-// so TestMain's scrub leaves it alone.
+// that ignores the context. It is not WXYC_*, so TestMain's scrub leaves it
+// alone.
 const interruptHelperEnv = "INTERRUPT_CONTEXT_HELPER"
 
 func TestMain_interruptHelper(t *testing.T) {
@@ -32,8 +32,7 @@ func TestMain_interruptHelper(t *testing.T) {
 }
 
 // The first Ctrl-C cancels the context; a second must kill the process even
-// when the command is blocked on something that ignores the context, such as
-// `wxyc login`'s prompts.
+// when the command is blocked on something that ignores the context.
 func TestInterruptContext_SecondInterruptKills(t *testing.T) {
 	cmd := exec.Command(os.Args[0], "-test.run=^TestMain_interruptHelper$")
 	cmd.Env = append(os.Environ(), interruptHelperEnv+"=1")

@@ -67,11 +67,26 @@ func Execute() int {
 		stdout:       os.Stdout,
 		stderr:       os.Stderr,
 		stdin:        os.Stdin,
-		readPassword: func() ([]byte, error) { return term.ReadPassword(int(os.Stdin.Fd())) },
+		readPassword: terminalPassword,
 	}
 	ctx, stop := interruptContext(context.Background())
 	defer stop()
 	return execute(ctx, app, os.Args[1:])
+}
+
+// terminalPassword reads a password from the terminal without echo. On
+// Ctrl-C it restores the terminal state itself and returns ctx.Err(), so the
+// shell is never left with echo off: term.ReadPassword would only restore it
+// on return, which a blocked read never reaches before the process exits.
+func terminalPassword(ctx context.Context) ([]byte, error) {
+	fd := int(os.Stdin.Fd())
+	state, err := term.GetState(fd)
+	if err != nil {
+		return nil, err
+	}
+	return awaitCtx(ctx, func() { term.Restore(fd, state) }, func() ([]byte, error) {
+		return term.ReadPassword(fd)
+	})
 }
 
 // execute runs args on app, reports any error on app.stderr, and returns the
@@ -82,10 +97,9 @@ func execute(ctx context.Context, app *App, args []string) int {
 }
 
 // interruptContext returns a context cancelled by the first Ctrl-C, which
-// aborts any in-flight request. The handler is removed as soon as that signal
-// arrives, so a second Ctrl-C gets the default behaviour and kills the
-// process — the only way out of something that ignores the context, such as
-// login's username and password prompts.
+// aborts any in-flight request and login's prompts. The handler is removed as
+// soon as that signal arrives, so a second Ctrl-C gets the default behaviour
+// and kills the process — the way out of anything that ignores the context.
 func interruptContext(parent context.Context) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(parent)
 	sigs := make(chan os.Signal, 1)

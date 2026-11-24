@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -19,7 +20,12 @@ func newLoginCmd(app *App) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			fmt.Fprint(app.stderr, "WXYC email or username: ")
-			ident, err := readLine(app.stdin)
+			// Ctrl-C cancels the context; awaitCtx lets login return at once
+			// rather than wait for a line that may never come.
+			ident, err := awaitCtx(cmd.Context(), nil, func() (string, error) { return readLine(app.stdin) })
+			if errors.Is(err, context.Canceled) {
+				return err
+			}
 			if err != nil {
 				return fmt.Errorf("reading email or username: %w", err)
 			}
@@ -28,10 +34,13 @@ func newLoginCmd(app *App) *cobra.Command {
 			}
 
 			fmt.Fprint(app.stderr, "Password: ")
-			pw, err := app.readPassword()
+			pw, err := app.readPassword(cmd.Context())
 			fmt.Fprintln(app.stderr) // the terminal swallowed the Enter
 			if err != nil {
 				return fmt.Errorf("reading password: %w", err)
+			}
+			if len(pw) == 0 {
+				return errors.New("a password is required")
 			}
 
 			strategy := auth.PasswordStrategy{
@@ -61,8 +70,18 @@ func newLoginCmd(app *App) *cobra.Command {
 func readLine(r io.Reader) (string, error) {
 	var sb strings.Builder
 	b := make([]byte, 1)
+	empty := 0
 	for {
 		n, err := r.Read(b)
+		if n == 0 && err == nil {
+			// io.Reader permits (0, nil); give up like bufio does rather
+			// than spin on a reader that never makes progress.
+			if empty++; empty >= maxEmptyReads {
+				return "", io.ErrNoProgress
+			}
+			continue
+		}
+		empty = 0
 		if n == 1 {
 			if b[0] == '\n' {
 				break
@@ -77,4 +96,34 @@ func readLine(r io.Reader) (string, error) {
 		}
 	}
 	return strings.TrimSpace(sb.String()), nil
+}
+
+// maxEmptyReads is how many consecutive (0, nil) reads readLine tolerates,
+// matching bufio's limit.
+const maxEmptyReads = 100
+
+// awaitCtx runs fn and returns its result, or returns ctx.Err() as soon as
+// ctx is cancelled, after calling onCancel (if non-nil). fn keeps running in
+// the background: that is acceptable only for a blocking terminal read the
+// process is about to exit from anyway.
+func awaitCtx[T any](ctx context.Context, onCancel func(), fn func() (T, error)) (T, error) {
+	type result struct {
+		v   T
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		v, err := fn()
+		done <- result{v, err}
+	}()
+	select {
+	case r := <-done:
+		return r.v, r.err
+	case <-ctx.Done():
+		if onCancel != nil {
+			onCancel()
+		}
+		var zero T
+		return zero, ctx.Err()
+	}
 }
