@@ -17,6 +17,32 @@ type Album struct {
 	Label            string `json:"label"`
 }
 
+// AlbumInfo is the GET /library/info?album_id= record: the search-row fields
+// plus the detail-only ones (plays, dates, streaming state, definitive links).
+type AlbumInfo struct {
+	Album
+	LegacyReleaseID int      `json:"legacy_release_id"`
+	LabelID         *int     `json:"label_id"`
+	AlternateArtist *string  `json:"alternate_artist_name"`
+	DiscQuantity    int      `json:"disc_quantity"`
+	AlbumArtist     *string  `json:"album_artist"`
+	Plays           int      `json:"plays"`
+	AddDate         string   `json:"add_date"`
+	LastModified    string   `json:"last_modified"`
+	OnStreaming     *bool    `json:"on_streaming"`
+	DateLost        *string  `json:"date_lost"`
+	DateFound       *string  `json:"date_found"`
+	URLs            []string `json:"urls"`
+}
+
+// AlbumPlayCounts is the release's flowsheet plays by arm, from
+// GET /library/{id}/flowsheet-play-counts. The arms are disjoint.
+type AlbumPlayCounts struct {
+	Direct         int `json:"direct"`
+	RotationLinked int `json:"rotation_linked"`
+	LegacyLinked   int `json:"legacy_linked"`
+}
+
 // ShelfCode renders the album's physical filing location, e.g. "Jazz DA 11/4"
 // (the 4th release by the 11th artist filed under "DA" in the Jazz section).
 // The genre names the section; code_letters/code_artist_number/code_number

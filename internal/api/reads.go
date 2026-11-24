@@ -64,6 +64,22 @@ func (c *Client) Show(ctx context.Context, showID int) (Show, []byte, error) {
 	return s, raw, err
 }
 
+// AlbumInfo returns one album's full catalog record. A missing album is a 404.
+func (c *Client) AlbumInfo(ctx context.Context, albumID int) (AlbumInfo, []byte, error) {
+	var a AlbumInfo
+	raw, err := c.getInto(ctx, "/library/info",
+		map[string]string{"album_id": strconv.Itoa(albumID)}, &a)
+	return a, raw, err
+}
+
+// AlbumPlayCounts returns a release's flowsheet plays by arm. A missing album
+// is a 404.
+func (c *Client) AlbumPlayCounts(ctx context.Context, albumID int) (AlbumPlayCounts, []byte, error) {
+	var p AlbumPlayCounts
+	raw, err := c.getInto(ctx, "/library/"+strconv.Itoa(albumID)+"/flowsheet-play-counts", nil, &p)
+	return p, raw, err
+}
+
 // Rotation returns the current rotation as raw JSON. The shape is deep
 // (nested reconciled_identity, COALESCE fallbacks), so there is no decoded
 // projection at the client layer; the command decodes generically.

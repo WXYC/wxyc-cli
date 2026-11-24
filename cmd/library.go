@@ -13,6 +13,7 @@ func newLibraryCmd(app *App) *cobra.Command {
 	lib := &cobra.Command{Use: "library", Short: "Query the music library catalog"}
 	lib.AddCommand(
 		newLibrarySearchCmd(app),
+		newLibraryShowCmd(app),
 		newGenresCmd(app),
 		newFormatsCmd(app),
 		newRotationCmd(app),
@@ -137,6 +138,64 @@ func newLibrarySearchCmd(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&album, "album", "", "album title")
 	cmd.Flags().IntVarP(&n, "limit", "n", 0, "max results")
 	return cmd
+}
+
+func newLibraryShowCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <album_id>",
+		Short: "Show one album's catalog record and flowsheet play counts",
+		Long: "Show one album's catalog record and flowsheet play counts.\n\n" +
+			"In --json mode this emits an object with two keys, \"album\" and \"plays\",\n" +
+			"each holding that endpoint's response body verbatim.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("album_id must be an integer: %q", args[0])
+			}
+			album, albumRaw, err := app.client.AlbumInfo(cmd.Context(), id)
+			if err != nil {
+				return err
+			}
+			plays, playsRaw, err := app.client.AlbumPlayCounts(cmd.Context(), id)
+			if err != nil {
+				return err
+			}
+			combined, err := json.Marshal(map[string]json.RawMessage{
+				"album": albumRaw,
+				"plays": playsRaw,
+			})
+			if err != nil {
+				return fmt.Errorf("combining responses for --json: %w", err)
+			}
+			onStreaming := "unknown"
+			if album.OnStreaming != nil {
+				if *album.OnStreaming {
+					onStreaming = "yes"
+				} else {
+					onStreaming = "no"
+				}
+			}
+			row := []string{
+				strconv.Itoa(album.ID),
+				album.ArtistName,
+				album.AlbumTitle,
+				album.Format,
+				album.GenreName,
+				album.Label,
+				album.ShelfCode(),
+				strconv.Itoa(album.Plays),
+				onStreaming,
+				strconv.Itoa(plays.Direct),
+				strconv.Itoa(plays.RotationLinked),
+				strconv.Itoa(plays.LegacyLinked),
+			}
+			return app.render.EmitRaw(combined,
+				[]string{"ID", "ARTIST", "ALBUM", "FORMAT", "GENRE", "LABEL", "SHELF",
+					"PLAYS", "ON STREAMING", "DIRECT", "ROTATION", "LEGACY"},
+				[][]string{row})
+		},
+	}
 }
 
 func albumRows(albums []api.Album) [][]string {
