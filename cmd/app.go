@@ -36,6 +36,10 @@ type App struct {
 	token    func(context.Context) (string, error) // resolves the current JWT
 	stdout   io.Writer
 	stderr   io.Writer
+	// stdin supplies login's username line; readPassword reads the password
+	// without echo. Execute wires them to the terminal; tests inject fakes.
+	stdin        io.Reader
+	readPassword func() ([]byte, error)
 }
 
 // defaultAuthTimeout bounds a token exchange. Commands like whoami fetch a

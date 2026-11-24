@@ -117,7 +117,9 @@ exchange, transport, session store). `internal/safety` (write gate) and
   `WXYC_*` vars, `WXYC_API_URL` defaults to a trap server that fails the test
   on any request, and the session store is a temp-dir `FileStore` (never the
   OS keychain). Set only what a test needs with `t.Setenv`; use `runApp` with
-  `newTestApp` to override `getenv`/`newStore` directly. Shared helpers live
+  `newTestApp` to override `getenv`/`newStore` directly (and `stdin`/
+  `readPassword` for `login`). `execute(ctx, app, args)` is `Execute` minus
+  the process wiring; test the `error: …` line and exit codes through it. Shared helpers live
   in `internal/testutil`: `FakeJWT` and `CaptureServer`, which records the
   last write and fails the test if a request lacks the JSON headers. Bad-input tests must
   assert the specific error text, not just `err != nil`. Table-driven where

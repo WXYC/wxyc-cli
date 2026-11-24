@@ -10,6 +10,7 @@ import (
 
 	"github.com/WXYC/wxyc-cli/internal/auth"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // annotation keys carried on mutating commands.
@@ -57,17 +58,27 @@ func newRoot(app *App) *cobra.Command {
 	return root
 }
 
-// Execute runs the CLI and returns a process exit code.
+// Execute runs the CLI against the real process (args, environment,
+// terminal, keychain) and returns a process exit code.
 func Execute() int {
 	app := &App{
-		getenv:   os.Getenv,
-		newStore: auth.NewStore,
-		stdout:   os.Stdout,
-		stderr:   os.Stderr,
+		getenv:       os.Getenv,
+		newStore:     auth.NewStore,
+		stdout:       os.Stdout,
+		stderr:       os.Stderr,
+		stdin:        os.Stdin,
+		readPassword: func() ([]byte, error) { return term.ReadPassword(int(os.Stdin.Fd())) },
 	}
 	ctx, stop := interruptContext(context.Background())
 	defer stop()
-	return report(os.Stderr, run(ctx, app, os.Args[1:]))
+	return execute(ctx, app, os.Args[1:])
+}
+
+// execute runs args on app, reports any error on app.stderr, and returns the
+// exit code. It is Execute minus the process wiring, so tests can drive the
+// stderr line and exit-code contract end to end.
+func execute(ctx context.Context, app *App, args []string) int {
+	return report(app.stderr, run(ctx, app, args))
 }
 
 // interruptContext returns a context cancelled by the first Ctrl-C, which
